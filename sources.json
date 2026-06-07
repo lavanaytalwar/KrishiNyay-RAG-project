@@ -1,0 +1,341 @@
+{
+  "central_schemes": [
+    {
+      "name": "pmkisan",
+      "display": "PM-KISAN",
+      "urls": [
+        "https://pmkisan.gov.in/Documents/FAQPMKISAN.pdf",
+        "https://pmkisan.gov.in/Documents/RevisedFAQ.pdf",
+        "https://pmkisan.gov.in/Documents/ADDITIONAL-FAQ-IN-RESPECTIVE-OF-THE-PM2.pdf",
+        "https://pmkisan.gov.in/Documents/PMKisanSamanNidhi.pdf"
+      ],
+      "method": "bs4",
+      "selectors": ["p", "li", "div.accordion", "div.content", "td"],
+      "category": "income_support",
+      "priority": "high",
+      "language": ["hindi", "english"]
+    },
+    {
+      "name": "pmfby",
+      "display": "PMFBY Crop Insurance",
+      "urls": [
+        "https://pmfby.gov.in/",
+        "https://pmfby.gov.in/faq",
+        "https://pmfby.gov.in/policyDetails"
+      ],
+      "method": "bs4",
+      "selectors": ["p", "li", "h2", "h3", "div.faq", "div.panel-body"],
+      "category": "crop_insurance",
+      "priority": "high",
+      "language": ["hindi", "english"]
+    },
+    {
+      "name": "enam",
+      "display": "eNAM Online Mandi",
+      "urls": [
+        "https://enam.gov.in/web/",
+        "https://enam.gov.in/web/faq",
+        "https://enam.gov.in/web/about-us-overview"
+      ],
+      "method": "bs4",
+      "selectors": ["p", "li", "div.faq-content", "div.about-content"],
+      "category": "market_linkage",
+      "priority": "high",
+      "language": ["english"]
+    },
+    {
+      "name": "pmksy",
+      "display": "PM Krishi Sinchai Yojana",
+      "urls": [
+        "https://pmksy.gov.in/"
+      ],
+      "method": "bs4",
+      "selectors": ["p", "li", "div.content-area"],
+      "category": "irrigation",
+      "priority": "medium",
+      "language": ["english"]
+    },
+    {
+      "name": "rkvy",
+      "display": "Rashtriya Krishi Vikas Yojana",
+      "urls": [
+        "https://rkvy.nic.in/"
+      ],
+      "method": "bs4",
+      "selectors": ["p", "li", "div.content"],
+      "category": "infrastructure",
+      "priority": "medium",
+      "language": ["english"]
+    },
+    {
+      "name": "midh",
+      "display": "Mission Integrated Horticulture",
+      "urls": [
+        "https://midh.gov.in/"
+      ],
+      "method": "bs4",
+      "selectors": ["p", "li"],
+      "category": "horticulture",
+      "priority": "medium",
+      "language": ["english"]
+    },
+    {
+      "name": "vikaspedia_schemes",
+      "display": "Vikaspedia Central Schemes (Hindi)",
+      "urls": [
+        "https://en.vikaspedia.in/viewcontent/schemesall/schemes-for-farmers?lgn=en",
+        "https://en.vikaspedia.in/viewcontent/agriculture/policies-and-schemes?lgn=en"
+      ],
+      "method": "bs4",
+      "selectors": ["div.field-body", "p", "li", "h3"],
+      "follow_links": true,
+      "max_child_links": 20,
+      "category": "aggregator",
+      "priority": "high",
+      "language": ["hindi", "english"]
+    },
+    {
+      "name": "kcc",
+      "display": "Kisan Credit Card",
+      "urls": [
+        "https://www.nabard.org/content.aspx?id=591",
+        "https://en.vikaspedia.in/viewcontent/schemesall/schemes-for-farmers/credit-facility-for-farmers?lgn=en"
+      ],
+      "method": "bs4",
+      "selectors": ["p", "li", "div.field-body", "td"],
+      "category": "credit",
+      "priority": "high",
+      "language": ["english"]
+    },
+    {
+      "name": "agri_infra_fund",
+      "display": "Agriculture Infrastructure Fund",
+      "urls": [
+        "https://agriinfra.dac.gov.in/"
+      ],
+      "method": "bs4",
+      "selectors": ["p", "li", "div.content"],
+      "category": "infrastructure",
+      "priority": "medium",
+      "language": ["english"]
+    },
+    {
+      "name": "soil_health",
+      "display": "Soil Health Card Scheme",
+      "urls": [
+        "https://soilhealth.dac.gov.in/",
+        "https://en.vikaspedia.in/viewcontent/schemesall/schemes-for-farmers/soil-health-card-scheme?lgn=en"
+      ],
+      "method": "bs4",
+      "selectors": ["p", "li", "div.field-body"],
+      "category": "soil",
+      "priority": "medium",
+      "language": ["english"]
+    },
+    {
+      "name": "mnrega",
+      "display": "MNREGA Farm Labour Rights",
+      "urls": [
+        "https://en.vikaspedia.in/viewcontent/agriculture/policies-and-schemes/rural-employment-related-1/mgnrega?lgn=en"
+      ],
+      "method": "bs4",
+      "selectors": ["div.field-body", "p", "li"],
+      "category": "labour_rights",
+      "priority": "medium",
+      "language": ["hindi", "english"]
+    }
+  ],
+  "state_schemes": [
+    {
+      "name": "maharashtra",
+      "display": "Maharashtra Krishi Schemes",
+      "urls": [
+        "https://en.vikaspedia.in/viewcontent/schemesall/state-specific-schemes/welfare-schemes-of-maharashtra?lgn=en"
+      ],
+      "method": "bs4",
+      "selectors": ["div.field-body", "p", "li", "h3"],
+      "follow_links": true,
+      "max_child_links": 20,
+      "state": "Maharashtra",
+      "priority": "high",
+      "language": ["marathi", "english"]
+    },
+    {
+      "name": "uttar_pradesh",
+      "display": "UP Agriculture Schemes",
+      "urls": [
+        "https://en.vikaspedia.in/viewcontent/schemesall/state-specific-schemes/welfare-schemes-of-uttar-pradesh?lgn=en",
+        "https://upagriculture.com/"
+      ],
+      "method": "bs4",
+      "selectors": ["div.field-body", "p", "li", "h3", "div.content-area"],
+      "follow_links": true,
+      "max_child_links": 20,
+      "state": "Uttar Pradesh",
+      "priority": "high",
+      "language": ["hindi", "english"]
+    },
+    {
+      "name": "rajasthan",
+      "display": "Rajasthan Rajkisan Portal",
+      "urls": [
+        "https://en.vikaspedia.in/viewcontent/schemesall/state-specific-schemes/welfare-schemes-of-rajasthan?lgn=en"
+      ],
+      "method": "bs4",
+      "selectors": ["div.field-body", "p", "li"],
+      "follow_links": true,
+      "max_child_links": 20,
+      "state": "Rajasthan",
+      "priority": "high",
+      "language": ["hindi", "english"]
+    },
+    {
+      "name": "madhya_pradesh",
+      "display": "MP Agriculture Schemes",
+      "urls": [
+        "https://en.vikaspedia.in/viewcontent/schemesall/state-specific-schemes/welfare-schemes-of-madhya-pradesh?lgn=en"
+      ],
+      "method": "bs4",
+      "selectors": ["div.field-body", "p", "li"],
+      "follow_links": true,
+      "max_child_links": 20,
+      "state": "Madhya Pradesh",
+      "priority": "high",
+      "language": ["hindi", "english"]
+    },
+    {
+      "name": "andhra_pradesh",
+      "display": "AP YSR Rythu Bharosa",
+      "urls": [
+        "https://en.vikaspedia.in/viewcontent/schemesall/state-specific-schemes/welfare-schemes-of-andhra-pradesh?lgn=en"
+      ],
+      "method": "bs4",
+      "selectors": ["div.field-body", "p", "li"],
+      "follow_links": true,
+      "max_child_links": 20,
+      "state": "Andhra Pradesh",
+      "priority": "high",
+      "language": ["telugu", "english"]
+    },
+    {
+      "name": "telangana",
+      "display": "Telangana Rythu Bandhu",
+      "urls": [
+        "https://en.vikaspedia.in/viewcontent/schemesall/state-specific-schemes/welfare-schemes-of-telangana?lgn=en"
+      ],
+      "method": "bs4",
+      "selectors": ["div.field-body", "p", "li"],
+      "follow_links": true,
+      "max_child_links": 20,
+      "state": "Telangana",
+      "priority": "high",
+      "language": ["telugu", "english"]
+    },
+    {
+      "name": "karnataka",
+      "display": "Karnataka Raitha Siri",
+      "urls": [
+        "https://en.vikaspedia.in/viewcontent/schemesall/state-specific-schemes/welfare-schemes-of-karnataka?lgn=en"
+      ],
+      "method": "bs4",
+      "selectors": ["div.field-body", "p", "li"],
+      "follow_links": true,
+      "max_child_links": 20,
+      "state": "Karnataka",
+      "priority": "medium",
+      "language": ["kannada", "english"]
+    },
+    {
+      "name": "punjab",
+      "display": "Punjab Agriculture Schemes",
+      "urls": [
+        "https://en.vikaspedia.in/viewcontent/schemesall/state-specific-schemes/schemes-of-punjab?lgn=en"
+      ],
+      "method": "bs4",
+      "selectors": ["div.field-body", "p", "li"],
+      "follow_links": true,
+      "max_child_links": 20,
+      "state": "Punjab",
+      "priority": "medium",
+      "language": ["punjabi", "english"]
+    },
+    {
+      "name": "gujarat",
+      "display": "Gujarat i-Khedut Schemes",
+      "urls": [
+        "https://en.vikaspedia.in/viewcontent/schemesall/state-specific-schemes/welfare-schemes-of-gujarat?lgn=en"
+      ],
+      "method": "bs4",
+      "selectors": ["div.field-body", "p", "li"],
+      "follow_links": true,
+      "max_child_links": 20,
+      "state": "Gujarat",
+      "priority": "medium",
+      "language": ["gujarati", "english"]
+    },
+    {
+      "name": "bihar",
+      "display": "Bihar Agriculture Schemes",
+      "urls": [
+        "https://en.vikaspedia.in/viewcontent/schemesall/state-specific-schemes/welfare-schemes-of-bihar?lgn=en"
+      ],
+      "method": "bs4",
+      "selectors": ["div.field-body", "p", "li"],
+      "follow_links": true,
+      "max_child_links": 20,
+      "state": "Bihar",
+      "priority": "medium",
+      "language": ["hindi", "english"]
+    },
+    {
+      "name": "tamil_nadu",
+      "display": "Tamil Nadu Agriculture Schemes",
+      "urls": [
+        "https://en.vikaspedia.in/viewcontent/schemesall/state-specific-schemes/welfare-schemes-of-tamil-nadu?lgn=en"
+      ],
+      "method": "bs4",
+      "selectors": ["div.field-body", "p", "li"],
+      "follow_links": true,
+      "max_child_links": 20,
+      "state": "Tamil Nadu",
+      "priority": "medium",
+      "language": ["tamil", "english"]
+    },
+    {
+      "name": "west_bengal",
+      "display": "West Bengal Krishak Bandhu",
+      "urls": [
+        "https://en.vikaspedia.in/viewcontent/schemesall/state-specific-schemes/welfare-schemes-of-west-bengal?lgn=en"
+      ],
+      "method": "bs4",
+      "selectors": ["div.field-body", "p", "li"],
+      "follow_links": true,
+      "max_child_links": 20,
+      "state": "West Bengal",
+      "priority": "medium",
+      "language": ["bengali", "english"]
+    }
+  ],
+  "pdf_sources": [
+    {
+      "name": "msp_notifications",
+      "display": "MSP Notifications CACP",
+      "urls": [
+        "https://cacp.dacnet.nic.in/ViewContents.aspx?Input=1&PageId=36&KeyId=0"
+      ],
+      "method": "pdf_links",
+      "category": "msp",
+      "priority": "high"
+    },
+    {
+      "name": "icar_crop_guides",
+      "display": "ICAR Crop Management Guides",
+      "urls": [
+        "https://icar.org.in/content/publications"
+      ],
+      "method": "pdf_links",
+      "category": "crop_science",
+      "priority": "high"
+    }
+  ]
+}

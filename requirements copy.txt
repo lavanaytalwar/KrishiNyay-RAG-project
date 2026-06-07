@@ -1,0 +1,27 @@
+# KrishiNyay — Phase 1 requirements
+# Install: pip install -r requirements.txt
+
+# ── Scraping ────────────────────────────────────────────────────────────────
+requests==2.31.0
+beautifulsoup4==4.12.3
+lxml==5.1.0                    # faster BS4 parser
+playwright==1.43.0             # for JS-rendered portals (pip install playwright && playwright install chromium)
+
+# ── PDF extraction ──────────────────────────────────────────────────────────
+pdfplumber==0.11.0
+pypdf==4.2.0                   # fallback PDF reader
+
+# ── NLP & cleaning ──────────────────────────────────────────────────────────
+indic-nlp-library==0.92        # Hindi Unicode normalisation
+regex==2024.4.16               # better Unicode regex
+
+# ── Embeddings & vector store ───────────────────────────────────────────────
+langchain==0.2.5
+langchain-community==0.2.5
+sentence-transformers==3.0.1   # multilingual embeddings
+chromadb==0.5.0                # local vector store (dev)
+
+# ── Data & utilities ────────────────────────────────────────────────────────
+pandas==2.2.2
+tqdm==4.66.4
+python-dotenv==1.0.1
