@@ -1,0 +1,52 @@
+[
+  {
+    "question": "PM-KISAN scheme mein kitne paise milte hain per year?",
+    "ground_truth": "PM-KISAN scheme mein Rs. 6000 per year milte hain, teen installments mein Rs. 2000 each.",
+    "generated_answer": "[Retrieved from: PM-KISAN]\n\nPradhan Mantri KIsan SAmman Nidhi (PM-KISAN)\nObjective\n With a view to augment the income of the Small and Marginal Farmers (SMFs), the\nGovernment has launched a new Central Sector Scheme, namely, Pradhan Mantri\nKIsan SAmman Nidhi (PM-KISAN) in the current financial year.",
+    "retrieved_context": "[Source 1: PM-KISAN]\nPradhan Mantri KIsan SAmman Nidhi (PM-KISAN)\nObjective\n With a view to augment the income of the Small and Marginal Farmers (SMFs), the\nGovernment has launched a new Central Sector Scheme, namely, Pradhan Mantri\nKIsan SAmman Nidhi (PM-KISAN) in the current financial year.\n The PM-KISAN scheme aims to supplement the financial needs of the SMFs in\nprocuring various inputs to ens",
+    "faithfulness": 1.0,
+    "answer_relevancy": 0.8,
+    "context_recall": 0.8571428571428571,
+    "overall": 0.8857142857142857
+  },
+  {
+    "question": "What documents are needed to apply for PM-KISAN?",
+    "ground_truth": "Aadhaar card, land records (Khasra/Khatauni), bank account details, and mobile number linked to Aadhaar.",
+    "generated_answer": "[Retrieved from: PM-KISAN]\n\nPradhan Mantri KIsan SAmman Nidhi (PM-KISAN)\nObjective\n With a view to augment the income of the Small and Marginal Farmers (SMFs), the\nGovernment has launched a new Central Sector Scheme, namely, Pradhan Mantri\nKIsan SAmman Nidhi (PM-KISAN) in the current financial year.",
+    "retrieved_context": "[Source 1: PM-KISAN]\nPradhan Mantri KIsan SAmman Nidhi (PM-KISAN)\nObjective\n With a view to augment the income of the Small and Marginal Farmers (SMFs), the\nGovernment has launched a new Central Sector Scheme, namely, Pradhan Mantri\nKIsan SAmman Nidhi (PM-KISAN) in the current financial year.\n The PM-KISAN scheme aims to supplement the financial needs of the SMFs in\nprocuring various inputs to ens",
+    "faithfulness": 1.0,
+    "answer_relevancy": 0.8888888888888888,
+    "context_recall": 0.21428571428571427,
+    "overall": 0.701058201058201
+  },
+  {
+    "question": "PMFBY mein kharif crops ka premium kitna hota hai?",
+    "ground_truth": "Kharif crops ke liye PMFBY premium 2% of sum insured hota hai.",
+    "generated_answer": "Maafi kijiye, is sawaal ka jawab hamari knowledge base mein nahi mila.",
+    "retrieved_context": "",
+    "faithfulness": 0.0,
+    "answer_relevancy": 0.4444444444444444,
+    "context_recall": 0.0,
+    "overall": 0.14814814814814814
+  },
+  {
+    "question": "Maharashtra mein Namo Shetkari scheme se kitna milta hai?",
+    "ground_truth": "Maharashtra government Rs. 6000 extra deti hai PM-KISAN ke upar, total Rs. 12000 per year.",
+    "generated_answer": "[Retrieved from: Gujarat i-Khedut Schemes]\n\nNamo Saraswati Vigyan Sadhana Yojana and\nNamo Lakshmi Yojana\nare the major educational welfare schemes of Gujarat Government.\nIn the year 2024, Gujarat Government launched Namo Saraswati Vigyan Sadhana Yojana.\nThe main objective of this scheme is to encour",
+    "retrieved_context": "[Source 1: Gujarat i-Khedut Schemes]\nNamo Saraswati Vigyan Sadhana Yojana and\nNamo Lakshmi Yojana\nare the major educational welfare schemes of Gujarat Government.\nIn the year 2024, Gujarat Government launched Namo Saraswati Vigyan Sadhana Yojana.\nThe main objective of this scheme is to encourage students to take science as a subject after passing class 10th board examinations and make their career",
+    "faithfulness": 1.0,
+    "answer_relevancy": 0.4444444444444444,
+    "context_recall": 0.4,
+    "overall": 0.6148148148148148
+  },
+  {
+    "question": "How can a farmer register for PM-KISAN?",
+    "ground_truth": "Farmers can register through Common Service Centres, Gram Patwari, Revenue Officer, or pmkisan.gov.in portal.",
+    "generated_answer": "[Retrieved from: PM-KISAN]\n\nPradhan Mantri KIsan SAmman Nidhi (PM-KISAN)\nObjective\n With a view to augment the income of the Small and Marginal Farmers (SMFs), the\nGovernment has launched a new Central Sector Scheme, namely, Pradhan Mantri\nKIsan SAmman Nidhi (PM-KISAN) in the current financial year.",
+    "retrieved_context": "[Source 1: PM-KISAN]\nPradhan Mantri KIsan SAmman Nidhi (PM-KISAN)\nObjective\n With a view to augment the income of the Small and Marginal Farmers (SMFs), the\nGovernment has launched a new Central Sector Scheme, namely, Pradhan Mantri\nKIsan SAmman Nidhi (PM-KISAN) in the current financial year.\n The PM-KISAN scheme aims to supplement the financial needs of the SMFs in\nprocuring various inputs to ens",
+    "faithfulness": 1.0,
+    "answer_relevancy": 1.0,
+    "context_recall": 0.28125,
+    "overall": 0.7604166666666666
+  }
+]
