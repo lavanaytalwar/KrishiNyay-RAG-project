@@ -3,7 +3,8 @@ KrishiNyay — rag_chain.py
 The full RAG chain: retrieve context → build prompt → generate answer.
 
 LLM STRATEGY:
-  Production  : Ollama (Llama 3.1 8B running locally — free, private)
+  Hosted demo : Gemini or OpenRouter via API key
+  Local demo  : Ollama (Llama 3.1 8B running locally — free, private)
   Dev/fallback: Anthropic API (claude-haiku — fast, cheap, great Hindi)
   Offline test: Template answer (no LLM needed — proves retrieval works)
 
@@ -64,6 +65,51 @@ def _call_anthropic(prompt: str) -> str:
     return msg.content[0].text.strip()
 
 
+def _call_gemini(prompt: str) -> str:
+    """Call Gemini REST API without adding a Google SDK dependency."""
+    import requests
+
+    api_key = os.environ["GEMINI_API_KEY"]
+    model = os.environ.get("GEMINI_MODEL", "gemini-1.5-flash")
+    url = (
+        f"https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{model}:generateContent?key={api_key}"
+    )
+    resp = requests.post(
+        url,
+        json={"contents": [{"parts": [{"text": prompt}]}]},
+        timeout=60,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+
+
+def _call_openrouter(prompt: str) -> str:
+    """Call OpenRouter's OpenAI-compatible chat API."""
+    import requests
+
+    model = os.environ.get("OPENROUTER_MODEL", "google/gemini-2.0-flash-exp:free")
+    resp = requests.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": os.environ.get("APP_URL", "http://localhost:8000"),
+            "X-Title": "KrishiNyay AI",
+        },
+        json={
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.2,
+            "max_tokens": 700,
+        },
+        timeout=60,
+    )
+    resp.raise_for_status()
+    return resp.json()["choices"][0]["message"]["content"].strip()
+
+
 def _call_ollama(prompt: str, model: str = "llama3.1:8b") -> str:
     """Call local Ollama instance — free, runs on your machine."""
     import requests
@@ -96,10 +142,20 @@ def _template_answer(question: str, results: list[dict]) -> str:
 def _choose_llm():
     """
     Pick the best available LLM backend:
-    1. Ollama (local Llama 3.1 — preferred for production)
-    2. Anthropic API (best Hindi, fastest for dev)
-    3. Template fallback (always works, no LLM needed)
+    1. Gemini API (recommended hosted demo)
+    2. OpenRouter API (hosted model router)
+    3. Ollama (local Llama 3.1)
+    4. Anthropic API (dev fallback)
+    5. Template fallback (always works, no LLM needed)
     """
+    if os.environ.get("GEMINI_API_KEY"):
+        log.info("Using Gemini API")
+        return "gemini", _call_gemini
+
+    if os.environ.get("OPENROUTER_API_KEY"):
+        log.info("Using OpenRouter API")
+        return "openrouter", _call_openrouter
+
     # Try Ollama first
     try:
         import requests
@@ -109,20 +165,22 @@ def _choose_llm():
             llama  = next((m for m in models if "llama" in m.lower()), None)
             model  = llama or "llama3.1:8b"
             log.info(f"✓ Using Ollama: {model}")
-            return lambda prompt: _call_ollama(prompt, model)
+            return f"ollama:{model}", lambda prompt: _call_ollama(prompt, model)
     except Exception:
         pass
 
     # Try Anthropic
     if os.environ.get("ANTHROPIC_API_KEY"):
         log.info("✓ Using Anthropic API (claude-haiku)")
-        return _call_anthropic
+        return "anthropic", _call_anthropic
 
     # Template fallback
     log.warning("No LLM backend found — using template fallback")
+    log.warning("  For Gemini : export GEMINI_API_KEY=...")
+    log.warning("  For OpenRouter: export OPENROUTER_API_KEY=...")
     log.warning("  For Ollama : install ollama.com → ollama pull llama3.1:8b")
     log.warning("  For Anthropic: export ANTHROPIC_API_KEY=sk-...")
-    return None
+    return "template", None
 
 
 # ── RAG Chain ──────────────────────────────────────────────────────────────
@@ -132,7 +190,7 @@ class RAGChain:
         from vector_store import VectorStore
         self.store     = VectorStore()
         self.n_results = n_results
-        self.llm_fn    = _choose_llm()
+        self.llm_provider, self.llm_fn = _choose_llm()
         log.info(f"RAGChain ready (n_results={n_results})")
 
     def ask(
@@ -184,11 +242,21 @@ class RAGChain:
             "question": question,
             "answer":   answer,
             "sources":  [
-                {"display": r["display"], "url": r["url"], "similarity": r["similarity"]}
+                {
+                    "display": r["display"],
+                    "url": r["url"],
+                    "similarity": r["similarity"],
+                    "category": r.get("category", ""),
+                    "state": r.get("state", ""),
+                    "source": r.get("source", ""),
+                    "text": r.get("text", ""),
+                }
                 for r in results
             ],
             "context":  context,
             "n_chunks": len(results),
+            "mode":     "rag",
+            "llm_provider": self.llm_provider,
         }
 
     def ask_simple(self, question: str) -> str:

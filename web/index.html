@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>KrishiNyay AI</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <a class="brand" href="#home" data-route="home">
+          <span class="brand-mark">K</span>
+          <span>
+            <strong>KrishiNyay AI</strong>
+            <small>Farmer RAG assistant</small>
+          </span>
+        </a>
+
+        <nav class="nav-list" aria-label="Main navigation">
+          <a href="#home" data-route="home" class="nav-item active">Home</a>
+          <a href="#chat" data-route="chat" class="nav-item">Chat</a>
+          <a href="#knowledge" data-route="knowledge" class="nav-item">Sources</a>
+          <a href="#ingest" data-route="ingest" class="nav-item">Ingest</a>
+          <a href="#system" data-route="system" class="nav-item">System</a>
+        </nav>
+
+        <div class="sidebar-card">
+          <span class="sticky-badge badge-green">Grounded RAG</span>
+          <span class="sticky-badge badge-yellow">Hindi + English</span>
+          <span class="sticky-badge badge-blue">Live Router</span>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">KrishiNyay AI</p>
+            <h1 id="pageTitle">A source-grounded farmer assistant for Indian schemes.</h1>
+          </div>
+          <div class="status-strip" id="statusStrip">
+            <span class="sticky-badge badge-gray">Checking system</span>
+          </div>
+        </header>
+
+        <section class="page active" id="page-home" aria-labelledby="landingTitle">
+          <div class="landing-hero">
+            <div class="landing-copy">
+              <div class="hero-badges">
+                <span class="sticky-badge badge-green">RAG Pipeline</span>
+                <span class="sticky-badge badge-yellow">Live Query Router</span>
+                <span class="sticky-badge badge-blue">Government Sources</span>
+              </div>
+              <h2 id="landingTitle">KrishiNyay AI explains schemes with citations instead of guesses.</h2>
+              <p>
+                The app combines scraped government documents, ChromaDB retrieval,
+                hosted or local LLM generation, and a router that refuses to answer
+                changing status or market-price questions from stale documents.
+              </p>
+              <div class="landing-actions">
+                <a class="primary-link" href="#chat" data-route="chat">Open Chat</a>
+                <a class="secondary-link" href="#knowledge" data-route="knowledge">View Source Checks</a>
+              </div>
+            </div>
+
+            <div class="hero-animation-stack" aria-label="Project animations">
+              <div class="animation-card large" data-animation="sticky-notes">
+                <div class="animation-fallback sticky-cluster">
+                  <span class="sticky-badge badge-yellow">FAQ</span>
+                  <span class="sticky-badge badge-blue">Guidelines</span>
+                  <span class="sticky-badge badge-green">Scheme</span>
+                  <span class="sticky-badge badge-pink">State</span>
+                </div>
+              </div>
+              <div class="animation-card small" data-animation="rag-flow">
+                <div class="animation-fallback flow-lines">
+                  <span>Query</span>
+                  <i></i>
+                  <span>Retrieve</span>
+                  <i></i>
+                  <span>Answer</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="explain-grid">
+            <article class="explain-card">
+              <div class="animation-slot" data-animation="router">
+                <div class="animation-fallback pulse-dot"></div>
+              </div>
+              <span class="sticky-badge badge-pink">Router</span>
+              <h3>Dynamic questions are intercepted first.</h3>
+              <p>Status, instalment, and mandi-price questions go to official live sources instead of stale RAG chunks.</p>
+            </article>
+            <article class="explain-card">
+              <div class="animation-slot" data-animation="retrieval">
+                <div class="animation-fallback orbit-notes">
+                  <span></span><span></span><span></span>
+                </div>
+              </div>
+              <span class="sticky-badge badge-blue">Retrieval</span>
+              <h3>Static scheme questions use ChromaDB.</h3>
+              <p>The backend retrieves document chunks, builds context, and returns source previews with similarity scores.</p>
+            </article>
+            <article class="explain-card">
+              <div class="animation-slot" data-animation="sources">
+                <div class="animation-fallback source-stack">
+                  <span></span><span></span><span></span>
+                </div>
+              </div>
+              <span class="sticky-badge badge-green">Citations</span>
+              <h3>Every answer shows its evidence.</h3>
+              <p>The chat page keeps the answer and the government document chunks visible side by side.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="page" id="page-chat" aria-labelledby="chatTitle">
+          <div class="chat-grid">
+            <section class="panel chat-panel">
+              <div class="panel-head">
+                <div>
+                  <h2 id="chatTitle">Farmer Chat</h2>
+                  <p>Ask in Hindi, Hinglish, or English.</p>
+                </div>
+                <span class="sticky-badge badge-yellow" id="modeBadge">Ready</span>
+              </div>
+
+              <div class="examples" id="examples">
+                <button>PM-KISAN mein kitne paise milte hain?</button>
+                <button>PMFBY mein kharif premium kitna hota hai?</button>
+                <button>Mera PM-KISAN status kya hai?</button>
+                <button>Maharashtra Namo Shetkari se kitna milta hai?</button>
+              </div>
+
+              <div class="messages" id="messages" aria-live="polite">
+                <article class="message assistant">
+                  <div class="avatar">AI</div>
+                  <div class="bubble">
+                    <p>Namaste. Ask a scheme, crop insurance, credit, or land-rights question. I will show the retrieved government chunks on the right.</p>
+                  </div>
+                </article>
+              </div>
+
+              <form class="composer" id="queryForm">
+                <textarea id="questionInput" rows="2" placeholder="Type your question..."></textarea>
+                <button type="submit" id="sendButton">Ask</button>
+              </form>
+            </section>
+
+            <aside class="panel source-panel">
+              <div class="panel-head">
+                <div>
+                  <h2>Retrieved Sources</h2>
+                  <p>Chunks used for the latest answer.</p>
+                </div>
+                <span class="sticky-badge badge-blue" id="sourceCount">0 chunks</span>
+              </div>
+              <div class="source-list" id="sourceList">
+                <div class="empty-state">Sources will appear after your first RAG answer.</div>
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        <section class="page" id="page-knowledge" aria-labelledby="knowledgeTitle">
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h2 id="knowledgeTitle">Knowledge Surface</h2>
+                <p>Use these checks to show recruiters what the system retrieves.</p>
+              </div>
+              <span class="sticky-badge badge-green">Source-first UI</span>
+            </div>
+            <div class="metric-grid">
+              <button class="test-card" data-question="PM-KISAN ka helpline number kya hai?">
+                <span class="sticky-badge badge-yellow">FAQ</span>
+                PM-KISAN helpline
+              </button>
+              <button class="test-card" data-question="Kisan Credit Card ke liye kaise apply karein?">
+                <span class="sticky-badge badge-blue">Scheme</span>
+                KCC application
+              </button>
+              <button class="test-card" data-question="Fasal bima ka premium kitna hota hai kharif crops ke liye?">
+                <span class="sticky-badge badge-pink">Guidelines</span>
+                PMFBY premium
+              </button>
+              <button class="test-card" data-question="Maharashtra mein farmers ko kya extra scheme milti hai?">
+                <span class="sticky-badge badge-green">State</span>
+                Maharashtra support
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="page" id="page-ingest" aria-labelledby="ingestTitle">
+          <div class="panel wide-panel">
+            <div class="panel-head">
+              <div>
+                <h2 id="ingestTitle">Live Document Ingest</h2>
+                <p>Add a small document to ChromaDB without rebuilding the full corpus.</p>
+              </div>
+              <span class="sticky-badge badge-pink">Live index</span>
+            </div>
+
+            <form class="ingest-form" id="ingestForm">
+              <label>
+                Title
+                <input id="ingestTitleInput" required minlength="2" placeholder="New scheme circular" />
+              </label>
+              <label>
+                URL
+                <input id="ingestUrlInput" placeholder="https://official-source.gov.in/..." />
+              </label>
+              <div class="form-row">
+                <label>
+                  Category
+                  <input id="ingestCategoryInput" value="scheme" />
+                </label>
+                <label>
+                  State
+                  <input id="ingestStateInput" value="central" />
+                </label>
+                <label>
+                  Doc type
+                  <input id="ingestDocTypeInput" value="Guidelines" />
+                </label>
+              </div>
+              <label>
+                Document text
+                <textarea id="ingestTextInput" required minlength="40" rows="8" placeholder="Paste cleaned government text here..."></textarea>
+              </label>
+              <button type="submit">Index Document</button>
+              <p class="form-note" id="ingestResult">Indexed documents are immediately searchable in this running app.</p>
+            </form>
+          </div>
+        </section>
+
+        <section class="page" id="page-system" aria-labelledby="systemTitle">
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h2 id="systemTitle">System Health</h2>
+                <p>Deployment readiness and active backend mode.</p>
+              </div>
+              <button class="ghost-button" id="refreshHealth">Refresh</button>
+            </div>
+            <div class="health-grid" id="healthGrid">
+              <div class="empty-state">Loading system state...</div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
+    <script src="/assets/app.js"></script>
+  </body>
+</html>

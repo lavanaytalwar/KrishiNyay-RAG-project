@@ -26,6 +26,7 @@ class VectorStore:
     def __init__(self):
         self.client     = chromadb.PersistentClient(path=str(CHROMA_DIR))
         self.collection = self.client.get_collection(COLLECTION)
+        self.embedding_backend = "unknown"
         self.embed_fn   = self._load_embedder()
         count = self.collection.count()
         log.info(f"VectorStore ready — {count} chunks indexed")
@@ -40,6 +41,7 @@ class VectorStore:
             )
             def embed(text: str) -> list[float]:
                 return model.encode([text], normalize_embeddings=True)[0].tolist()
+            self.embedding_backend = "MiniLM"
             log.info("Using multilingual SentenceTransformer for queries")
             return embed
         except Exception:
@@ -61,6 +63,7 @@ class VectorStore:
                     mat = mat / norm
                 return mat[0].tolist()
 
+            self.embedding_backend = "TF-IDF"
             log.info("Using TF-IDF fallback for queries")
             return embed
 
@@ -133,4 +136,8 @@ class VectorStore:
 
     def stats(self) -> dict:
         count = self.collection.count()
-        return {"total_chunks": count, "collection": COLLECTION}
+        return {
+            "total_chunks": count,
+            "collection": COLLECTION,
+            "embedding_backend": self.embedding_backend,
+        }

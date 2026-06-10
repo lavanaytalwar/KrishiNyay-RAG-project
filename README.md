@@ -55,6 +55,43 @@ python3 chunk_and_embed.py
 python3 validate_corpus.py
 ```
 
+## Phase 3 web app
+
+Phase 3 turns the RAG scripts into a usable web service with a multi-page UI.
+
+```bash
+# install dependencies
+pip install -r requirements.txt
+
+# run the FastAPI app
+uvicorn app:app --reload --port 8000
+```
+
+Open `http://localhost:8000`.
+
+### API endpoints
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /health` | Shows indexed chunk count, embedding backend, LLM provider, and router status |
+| `POST /query` | Runs dynamic-query routing first, then RAG over ChromaDB |
+| `POST /ingest` | Adds a new text document to the live vector store without rebuilding the full corpus |
+
+### LLM modes
+
+Set one hosted key for deployed generation, or run without a key for offline template answers.
+
+```bash
+export GEMINI_API_KEY=...
+# or
+export OPENROUTER_API_KEY=...
+# local-only fallback
+ollama pull llama3.1:8b
+```
+
+For Hugging Face Spaces, use the included `Dockerfile`, set the Space SDK to Docker,
+and add API keys as Space secrets.
+
 ## Output structure
 
 ```
