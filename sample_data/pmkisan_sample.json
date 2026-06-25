@@ -1,0 +1,11 @@
+{
+  "id": "sample_pmkisan",
+  "name": "sample_pmkisan",
+  "display": "PM-KISAN Sample",
+  "url": "https://pmkisan.gov.in/",
+  "category": "income_support",
+  "state": "central",
+  "priority": "high",
+  "language": ["english", "hindi"],
+  "text": "Pradhan Mantri Kisan Samman Nidhi (PM-KISAN) is a central sector scheme that provides income support to eligible farmer families. Eligible landholding farmer families receive Rs. 6,000 per year in three equal instalments of Rs. 2,000. The benefit is transferred directly to the beneficiary bank account. Farmers generally need Aadhaar details, bank account details, mobile number, and land records for registration or verification. Farmer-specific beneficiary status and payment status must be checked on the official PM-KISAN portal."
+}

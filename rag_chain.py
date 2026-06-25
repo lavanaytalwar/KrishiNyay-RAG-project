@@ -19,6 +19,8 @@ import os, logging
 from pathlib import Path
 from typing import Optional
 
+from query_utils import normalize_query
+
 log = logging.getLogger("krishinyay.rag_chain")
 
 # ── Prompt templates ───────────────────────────────────────────────────────
@@ -204,9 +206,11 @@ class RAGChain:
         Full RAG pipeline: retrieve → build prompt → generate.
         Returns dict with: answer, sources, context, question
         """
+        normalized_question = normalize_query(question)
+
         # 1. Retrieve relevant chunks
         results = self.store.query(
-            question,
+            normalized_question,
             n=self.n_results,
             category=category,
             state=state,
@@ -240,6 +244,7 @@ class RAGChain:
         # 5. Return structured response
         return {
             "question": question,
+            "normalized_question": normalized_question,
             "answer":   answer,
             "sources":  [
                 {
@@ -256,6 +261,7 @@ class RAGChain:
             "context":  context,
             "n_chunks": len(results),
             "mode":     "rag",
+            "route":    "rag",
             "llm_provider": self.llm_provider,
         }
 

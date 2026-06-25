@@ -1,0 +1,11 @@
+{
+  "id": "sample_kcc",
+  "name": "sample_kcc",
+  "display": "Kisan Credit Card Sample",
+  "url": "https://www.nabard.org/",
+  "category": "credit",
+  "state": "central",
+  "priority": "high",
+  "language": ["english", "hindi"],
+  "text": "The Kisan Credit Card (KCC) scheme helps farmers access short-term credit for crop cultivation and allied agricultural needs. Farmers can apply through banks, cooperative banks, regional rural banks, or official agriculture credit camps. Common documents include identity proof, address proof, land ownership or cultivation records, passport-size photograph, and bank account details. KCC loans may cover crop production expenses, post-harvest expenses, consumption needs, farm asset maintenance, and allied activities such as dairy or fisheries."
+}

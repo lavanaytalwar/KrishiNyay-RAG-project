@@ -9,6 +9,7 @@ Run with LLM answers: python validate_corpus.py --with-llm
 
 import sys, logging, argparse
 from pathlib import Path
+from typing import Optional
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
@@ -16,55 +17,139 @@ sys.path.insert(0, str(ROOT))
 logging.basicConfig(level=logging.WARNING)  # quiet for clean output
 log = logging.getLogger("krishinyay.validate")
 
-# ── 12 test queries covering all 3 pillars ─────────────────────────────────
+from query_utils import normalize_query
+
+
+ROUTE_RAG = "rag"
+ROUTE_DYNAMIC = "dynamic_router"
+ROUTE_FUTURE_LIVE = "future_live_api"
+
+
+# ── Test queries covering retrieval and live-data routing ──────────────────
 TEST_QUERIES = [
     # Central schemes — Hindi
-    ("PM-KISAN ke liye kaun eligible hai?",
-     "income_support", "Should retrieve PM-KISAN eligibility info"),
-    ("PM-KISAN mein kitne paise milte hain aur kab?",
-     "income_support", "Should retrieve ₹6000/year in 3 installments"),
+    {
+        "question": "PM-KISAN ke liye kaun eligible hai?",
+        "category": "income_support",
+        "route": ROUTE_RAG,
+        "expectation": "Should retrieve PM-KISAN eligibility info",
+    },
+    {
+        "question": "PM-KISAN mein kitne paise milte hain aur kab?",
+        "category": "income_support",
+        "route": ROUTE_RAG,
+        "expectation": "Should retrieve ₹6000/year in 3 installments",
+    },
 
     # Central schemes — English
-    ("What documents do I need to apply for PM-KISAN?",
-     "income_support", "Should retrieve Aadhaar, land records, bank details"),
-    ("How do I claim PMFBY crop insurance after flood damage?",
-     "crop_insurance", "Should retrieve 72-hour intimation, claim process"),
+    {
+        "question": "What documents do I need to apply for PM-KISAN?",
+        "category": "income_support",
+        "route": ROUTE_RAG,
+        "expectation": "Should retrieve Aadhaar, land records, bank details",
+    },
+    {
+        "question": "How do I claim PMFBY crop insurance after flood damage?",
+        "category": "crop_insurance",
+        "route": ROUTE_RAG,
+        "expectation": "Should retrieve 72-hour intimation, claim process",
+    },
 
     # State schemes
-    ("Maharashtra mein farmers ko kya extra scheme milti hai?",
-     None,             "Should retrieve Namo Shetkari ₹6000 extra"),
+    {
+        "question": "Maharashtra mein farmers ko kya extra scheme milti hai?",
+        "category": None,
+        "route": ROUTE_RAG,
+        "expectation": "Should retrieve Namo Shetkari ₹6000 extra",
+    },
 
     # Crop insurance Hindi
-    ("Fasal bima ka premium kitna hota hai kharif crops ke liye?",
-     "crop_insurance", "Should retrieve 2% of sum insured"),
+    {
+        "question": "Fasal bima ka premium kitna hota hai kharif crops ke liye?",
+        "category": "crop_insurance",
+        "route": ROUTE_RAG,
+        "expectation": "Should retrieve 2% of sum insured",
+    },
 
     # Legal
-    ("Tribal farmers ke liye forest rights kya hain?",
-     None,             "Should retrieve FRA 2006 content"),
-    ("Zameen khareedne par kisan ke kya adhikar hain?",
-     None,             "Should retrieve land acquisition rights"),
+    {
+        "question": "Tribal farmers ke liye forest rights kya hain?",
+        "category": None,
+        "route": ROUTE_RAG,
+        "expectation": "Should retrieve FRA 2006 content",
+    },
+    {
+        "question": "Zameen khareedne par kisan ke kya adhikar hain?",
+        "category": None,
+        "route": ROUTE_RAG,
+        "expectation": "Should retrieve land acquisition rights",
+    },
 
     # Financial
-    ("Kisan Credit Card ke liye kaise apply karein?",
-     "credit",         "Should retrieve KCC application process"),
+    {
+        "question": "Kisan Credit Card ke liye kaise apply karein?",
+        "category": "credit",
+        "route": ROUTE_RAG,
+        "expectation": "Should retrieve KCC application process",
+    },
 
     # Agri science
-    ("Cotton crop mein pest attack ke liye kya karein?",
-     None,             "Should retrieve crop management content"),
+    {
+        "question": "Cotton crop mein pest attack ke liye kya karein?",
+        "category": None,
+        "route": ROUTE_RAG,
+        "expectation": "Should retrieve crop management content",
+    },
 
     # Mixed Hindi-English (Hinglish)
-    ("PM-KISAN ka helpline number kya hai?",
-     "income_support", "Should retrieve 155261 / 1800115526"),
-    ("PMFBY claim karne ke baad kitne din mein paise milte hain?",
-     "crop_insurance", "Should retrieve claim settlement timeline"),
+    {
+        "question": "PM-KISAN ka helpline number kya hai?",
+        "category": "income_support",
+        "route": ROUTE_RAG,
+        "expectation": "Should retrieve 155261 / 1800115526",
+    },
+    {
+        "question": "PMFBY claim karne ke baad kitne din mein paise milte hain?",
+        "category": "crop_insurance",
+        "route": ROUTE_RAG,
+        "expectation": "Should retrieve claim settlement timeline",
+    },
+
+    # Dynamic/live data router cases
+    {
+        "question": "Mera PM-KISAN beneficiary status kya hai?",
+        "category": None,
+        "route": ROUTE_DYNAMIC,
+        "expectation": "Should route to official PM-KISAN live status portal",
+    },
+    {
+        "question": "Aaj soybean ka mandi bhav kya hai?",
+        "category": None,
+        "route": ROUTE_DYNAMIC,
+        "expectation": "Should route to live mandi/eNAM source",
+    },
+    {
+        "question": "Kal baarish hogi kya, spraying karu?",
+        "category": None,
+        "route": ROUTE_DYNAMIC,
+        "expectation": "Should route to live weather/advisory source",
+    },
 ]
+
+
+def _dynamic_route(question: str) -> Optional[dict]:
+    try:
+        from app import route_dynamic_query
+        return route_dynamic_query(question)
+    except Exception:
+        return None
 
 
 def run_validation(with_llm: bool = False):
     print()
     print("═" * 70)
     print("  KRISHINYAY — CORPUS VALIDATION")
-    print(f"  {len(TEST_QUERIES)} queries  ·  top-2 results each")
+    print(f"  {len(TEST_QUERIES)} queries  ·  RAG top-2 + dynamic routes")
     print("═" * 70)
 
     # Load vector store
@@ -73,6 +158,7 @@ def run_validation(with_llm: bool = False):
         vs = VectorStore()
         stats = vs.stats()
         print(f"\n  Vector store: {stats['total_chunks']} chunks indexed")
+        print(f"  Embeddings  : {stats['embedding_backend']} ({stats.get('embedding_dim', 'unknown')} dim)")
     except Exception as e:
         print(f"\n  ✗ Could not load VectorStore: {e}")
         print("    Run: python chunk_and_embed.py first")
@@ -93,12 +179,34 @@ def run_validation(with_llm: bool = False):
     total    = len(TEST_QUERIES)
     all_sims = []
 
-    for i, (query, category, expectation) in enumerate(TEST_QUERIES, 1):
+    for i, case in enumerate(TEST_QUERIES, 1):
+        query = case["question"]
+        category = case.get("category")
+        expected_route = case.get("route", ROUTE_RAG)
+        expectation = case["expectation"]
+
         print(f"\n{'─' * 70}")
         print(f"  [{i:02d}] {query}")
+        print(f"       Route   : {expected_route}")
         print(f"       Expected: {expectation}")
 
-        results = vs.query(query, n=2, category=category)
+        dynamic = _dynamic_route(query)
+        if expected_route == ROUTE_DYNAMIC:
+            ok = bool(dynamic and dynamic.get("route") == ROUTE_DYNAMIC)
+            if ok:
+                passed += 1
+                print(f"  ✓ Dynamic route: {dynamic.get('route_reason', 'dynamic')}")
+                print(f"       {dynamic['answer'][:160].strip()}...")
+            else:
+                print("  ✗  Expected dynamic route but query was not routed")
+            continue
+
+        if dynamic:
+            print(f"  ✗  Unexpected dynamic route: {dynamic.get('route_reason', 'dynamic')}")
+            continue
+
+        normalized_query = normalize_query(query)
+        results = vs.query(normalized_query, n=2, category=category)
 
         if not results:
             print("  ✗  No results returned")

@@ -3,12 +3,13 @@ KrishiNyay — chunk_and_embed.py
 Reads clean docs → splits into chunks → embeds → stores in ChromaDB.
 
 EMBEDDING:
-  Your machine : paraphrase-multilingual-MiniLM-L12-v2 (Hindi+English, 384-dim)
-  Sandbox      : TF-IDF sklearn fallback (no GPU/torch needed, proves pipeline)
+  Default      : paraphrase-multilingual-MiniLM-L12-v2 (Hindi+English, 384-dim)
+  Fallback     : TF-IDF sklearn fallback (no GPU/torch needed, proves pipeline)
 
 Run:
   python chunk_and_embed.py
   python chunk_and_embed.py --source pmkisan
+  python chunk_and_embed.py --sample-only --force
   python chunk_and_embed.py --force
 """
 
@@ -70,8 +71,7 @@ def try_sentence_transformer():
         # Import inside function to avoid module-level torch crash
         from sentence_transformers import SentenceTransformer  # noqa
         model = SentenceTransformer(
-            "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-            local_files_only=True,
+            "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
         )
         dim = model.get_sentence_embedding_dimension()
         log.info(f"✓ Multilingual SentenceTransformer loaded (dim={dim})")
@@ -87,7 +87,12 @@ def build_tfidf(all_texts: list):
     """TF-IDF fallback — works in any environment, no GPU needed."""
     import numpy as np
     from sklearn.feature_extraction.text import TfidfVectorizer
-    vec = TfidfVectorizer(max_features=1024, ngram_range=(1, 2), sublinear_tf=True)
+    vec = TfidfVectorizer(
+        max_features=1024,
+        ngram_range=(1, 2),
+        sublinear_tf=True,
+        token_pattern=r"(?u)\b[\w\-]+\b",
+    )
     vec.fit(all_texts)
     dim = 1024
     log.info(f"✓ TF-IDF fallback fitted (dim={dim}, docs={len(all_texts)})")
@@ -144,17 +149,22 @@ def already_indexed(col, doc_id: str) -> bool:
 
 
 # ── Main ───────────────────────────────────────────────────────────────────
-def run(source_filter=None, force=False):
+def run(source_filter=None, force=False, sample_only=False):
     log.info("=" * 60)
     log.info("  CHUNK & EMBED  —  KrishiNyay Phase 2")
     log.info("=" * 60)
 
     # 1. Discover clean docs
-    search_dirs = [
-        CLEAN_DIR,
-        ROOT / "data" / "raw" / "schemes",        # fallback to raw if clean not yet run
-        ROOT / "data" / "raw" / "state_schemes",
-    ]
+    sample_dir = ROOT / "sample_data"
+    if sample_only:
+        search_dirs = [sample_dir]
+    else:
+        search_dirs = [
+            CLEAN_DIR,
+            ROOT / "data" / "raw" / "schemes",        # fallback to raw if clean not yet run
+            ROOT / "data" / "raw" / "state_schemes",
+            sample_dir,                                # tracked demo corpus for fresh clones
+        ]
     all_files = []
     for d in search_dirs:
         if d.exists():
@@ -171,7 +181,7 @@ def run(source_filter=None, force=False):
             unique.append(f)
 
     if not unique:
-        log.error(f"No docs found. Run Phase 1 first: python scripts/run_phase1.py")
+        log.error("No docs found. Run Phase 1 or use tracked sample_data/*.json")
         return
 
     log.info(f"Found {len(unique)} doc(s)")
@@ -198,6 +208,7 @@ def run(source_filter=None, force=False):
                         "state":     safe_str(doc.get("state","central")),
                         "priority":  safe_str(doc.get("priority","medium")),
                         "language":  safe_str(doc.get("language","english")),
+                        "embedding_backend": "pending",
                         "chunk_idx": str(i),
                     },
                 })
@@ -210,8 +221,13 @@ def run(source_filter=None, force=False):
     # 3. Load embedder
     all_texts = [r["text"] for r in all_records]
     embed_fn, dim = try_sentence_transformer()
+    backend = "MiniLM"
     if embed_fn is None:
         embed_fn, dim = build_tfidf(all_texts)
+        backend = "TF-IDF"
+    for record in all_records:
+        record["meta"]["embedding_backend"] = backend
+        record["meta"]["embedding_dim"] = str(dim)
 
     # 4. Get collection
     col = get_collection(force=force)
@@ -253,6 +269,7 @@ def run(source_filter=None, force=False):
         "collection":COLLECTION, "chunk_size":CHUNK_SIZE,
         "chunk_overlap":CHUNK_OVERLAP, "total_chunks":len(all_records),
         "upserted":upserted, "skipped":skipped,
+        "embedding_backend": backend, "embedding_dim": dim,
         "embedded_at":datetime.now().isoformat(),
     }, indent=2))
 
@@ -267,5 +284,7 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--source", default=None)
     p.add_argument("--force",  action="store_true")
+    p.add_argument("--sample-only", action="store_true",
+                   help="Index only tracked sample_data/*.json for a portable demo")
     args = p.parse_args()
-    run(source_filter=args.source, force=args.force)
+    run(source_filter=args.source, force=args.force, sample_only=args.sample_only)

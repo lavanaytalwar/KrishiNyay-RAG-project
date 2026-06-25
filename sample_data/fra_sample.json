@@ -1,0 +1,11 @@
+{
+  "id": "sample_fra",
+  "name": "sample_fra",
+  "display": "Forest Rights Act Sample",
+  "url": "https://tribal.nic.in/",
+  "category": "legal",
+  "state": "central",
+  "priority": "medium",
+  "language": ["english", "hindi"],
+  "text": "The Scheduled Tribes and Other Traditional Forest Dwellers (Recognition of Forest Rights) Act, 2006 recognizes forest rights of eligible Scheduled Tribes and other traditional forest dwellers. Rights may include individual rights to forest land under occupation for habitation or self-cultivation, community rights such as grazing and access to minor forest produce, and rights to protect and manage community forest resources. Claims are initiated at the Gram Sabha level and then examined by higher committees under the Act."
+}

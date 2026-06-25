@@ -1,0 +1,11 @@
+{
+  "id": "sample_pmfby",
+  "name": "sample_pmfby",
+  "display": "PMFBY Sample",
+  "url": "https://pmfby.gov.in/",
+  "category": "crop_insurance",
+  "state": "central",
+  "priority": "high",
+  "language": ["english", "hindi"],
+  "text": "Pradhan Mantri Fasal Bima Yojana (PMFBY) provides crop insurance protection against notified risks such as drought, flood, pest attack, natural fire, storm, cyclone, and other localized calamities. For widespread crop loss, assessment is done through crop cutting experiments. For localized calamity or post-harvest loss, farmers should intimate the loss to the insurance company, bank, agriculture department, or crop insurance app within 72 hours where applicable. Indicative farmer premium rates are 2 percent of sum insured for Kharif food and oilseed crops, 1.5 percent for Rabi food and oilseed crops, and 5 percent for annual commercial or horticultural crops."
+}

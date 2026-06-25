@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from query_utils import canonical_for_routing
 from rag_chain import RAGChain
 
 
@@ -54,12 +55,16 @@ DYNAMIC_PATTERNS = {
         r"\b(pm[\s-]?kisan|kisan)\b",
     ],
     "installment": [
-        r"\b(kist|installment|instalment|payment|kab aayegi|kab aaegi|credited)\b",
-        r"\b(pm[\s-]?kisan|scheme|yojana)\b",
+        r"\b(kist|installment|instalment|payment status|kab aayegi|kab aaegi|credited)\b",
+        r"\b(pm[\s-]?kisan)\b",
     ],
     "mandi_price": [
         r"\b(price|bhav|mandi|rate|aaj ka bhav|market)\b",
         r"\b(gehu|wheat|rice|paddy|cotton|soybean|onion|potato|commodity)\b",
+    ],
+    "weather": [
+        r"\b(weather|rain|baarish|barish|mausam|temperature|forecast|spray|spraying)\b",
+        r"\b(today|tomorrow|kal|aaj|parso|crop|fasal|field|khet)\b",
     ],
 }
 
@@ -69,11 +74,13 @@ def _matches_all(question: str, patterns: list[str]) -> bool:
 
 
 def route_dynamic_query(question: str) -> Optional[dict]:
-    normalized = question.strip()
+    normalized = canonical_for_routing(question)
 
     if _matches_all(normalized, DYNAMIC_PATTERNS["pmkisan_status"]):
         return {
             "mode": "dynamic_router",
+            "route": "dynamic_router",
+            "route_reason": "pmkisan_live_status",
             "answer": (
                 "This is live, farmer-specific information, so I should not answer it "
                 "from the static knowledge base. Please check the official PM-KISAN "
@@ -97,6 +104,8 @@ def route_dynamic_query(question: str) -> Optional[dict]:
     if _matches_all(normalized, DYNAMIC_PATTERNS["installment"]):
         return {
             "mode": "dynamic_router",
+            "route": "dynamic_router",
+            "route_reason": "pmkisan_installment_live_status",
             "answer": (
                 "Instalment dates and payment status change over time, so I should not "
                 "guess from old documents. Use the official PM-KISAN portal for current "
@@ -119,6 +128,8 @@ def route_dynamic_query(question: str) -> Optional[dict]:
     if _matches_all(normalized, DYNAMIC_PATTERNS["mandi_price"]):
         return {
             "mode": "dynamic_router",
+            "route": "dynamic_router",
+            "route_reason": "mandi_price_live_data",
             "answer": (
                 "Mandi prices are live market data, so I should not answer from static "
                 "scheme documents. Please check the current commodity price on the "
@@ -134,6 +145,31 @@ def route_dynamic_query(question: str) -> Optional[dict]:
                     "source": "official_portal",
                     "doc_type": "Live Portal",
                     "text": "Commodity prices should be fetched from a live market data source.",
+                }
+            ],
+        }
+
+    if _matches_all(normalized, DYNAMIC_PATTERNS["weather"]):
+        return {
+            "mode": "dynamic_router",
+            "route": "dynamic_router",
+            "route_reason": "weather_live_data",
+            "answer": (
+                "Weather and spraying decisions depend on current local conditions, "
+                "so I should not answer from static documents. Please check an official "
+                "weather source such as IMD or your local agriculture advisory before "
+                "spraying or making crop-protection decisions."
+            ),
+            "sources": [
+                {
+                    "display": "India Meteorological Department",
+                    "url": "https://mausam.imd.gov.in/",
+                    "similarity": None,
+                    "category": "weather",
+                    "state": "india",
+                    "source": "official_portal",
+                    "doc_type": "Live Portal",
+                    "text": "Weather-sensitive farming decisions should use current local forecast data.",
                 }
             ],
         }
@@ -204,6 +240,7 @@ def health():
             "total_chunks": stats["total_chunks"],
             "collection": stats["collection"],
             "embedding_backend": stats["embedding_backend"],
+            "embedding_dim": stats.get("embedding_dim"),
             "llm_provider": chain.llm_provider,
             "dynamic_router": "enabled",
         }
@@ -220,6 +257,8 @@ def query(payload: QueryRequest):
             "answer": dynamic["answer"],
             "sources": enrich_sources(dynamic["sources"]),
             "mode": dynamic["mode"],
+            "route": dynamic["route"],
+            "route_reason": dynamic["route_reason"],
             "n_chunks": 0,
             "llm_provider": "router",
         }

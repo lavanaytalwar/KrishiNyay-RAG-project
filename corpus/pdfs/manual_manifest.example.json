@@ -1,0 +1,34 @@
+{
+  "documents": [
+    {
+      "name": "pmfby_operational_guidelines",
+      "display": "PMFBY Operational Guidelines",
+      "file": "staging/pmfby_operational_guidelines.pdf",
+      "url": "https://pmfby.gov.in/",
+      "category": "crop_insurance",
+      "state": "central",
+      "language": ["english", "hindi"],
+      "priority": "high"
+    },
+    {
+      "name": "fra_2006",
+      "display": "Forest Rights Act 2006",
+      "file": "staging/fra_2006.pdf",
+      "url": "https://tribal.nic.in/",
+      "category": "legal",
+      "state": "central",
+      "language": ["english"],
+      "priority": "high"
+    },
+    {
+      "name": "maharashtra_farmer_scheme",
+      "display": "Maharashtra Farmer Scheme",
+      "file": "staging/maharashtra_farmer_scheme.pdf",
+      "source_note": "Official state government PDF manually downloaded by project owner.",
+      "category": "state_scheme",
+      "state": "maharashtra",
+      "language": ["english", "marathi"],
+      "priority": "medium"
+    }
+  ]
+}

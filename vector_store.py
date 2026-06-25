@@ -27,45 +27,91 @@ class VectorStore:
         self.client     = chromadb.PersistentClient(path=str(CHROMA_DIR))
         self.collection = self.client.get_collection(COLLECTION)
         self.embedding_backend = "unknown"
+        self.index_dim = self._collection_dim()
         self.embed_fn   = self._load_embedder()
         count = self.collection.count()
         log.info(f"VectorStore ready — {count} chunks indexed")
 
+    def _collection_dim(self) -> Optional[int]:
+        """Return stored embedding dimension for non-empty Chroma collections."""
+        try:
+            sample = self.collection.peek(1)
+            embeddings = sample.get("embeddings")
+            if embeddings is not None and len(embeddings):
+                return len(embeddings[0])
+        except Exception:
+            pass
+        return None
+
+    def _index_meta(self) -> dict:
+        meta_path = CHUNKS_DIR / "embed_meta.json"
+        if not meta_path.exists():
+            return {}
+        try:
+            return json.loads(meta_path.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+
     def _load_embedder(self):
-        """Load multilingual model or TF-IDF fallback."""
+        """Load an embedder compatible with the stored Chroma index."""
+        meta = self._index_meta()
+        saved_backend = str(meta.get("embedding_backend", "")).upper()
+        saved_dim = meta.get("embedding_dim")
+
+        if saved_backend == "TF-IDF" or saved_dim == 1024 or self.index_dim == 1024:
+            return self._load_tfidf_embedder()
+
         try:
             from sentence_transformers import SentenceTransformer
             model = SentenceTransformer(
-                "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-                local_files_only=True,
+                "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
             )
+            model_dim = model.get_sentence_embedding_dimension()
+            if self.index_dim and model_dim != self.index_dim:
+                raise RuntimeError(
+                    f"Stored index dim is {self.index_dim}, but MiniLM dim is {model_dim}. "
+                    "Re-run chunk_and_embed.py --force to rebuild the index."
+                )
             def embed(text: str) -> list[float]:
                 return model.encode([text], normalize_embeddings=True)[0].tolist()
             self.embedding_backend = "MiniLM"
             log.info("Using multilingual SentenceTransformer for queries")
             return embed
-        except Exception:
-            # TF-IDF fallback — load saved vectorizer
-            vec_path = CHROMA_DIR / "tfidf_vectorizer.pkl"
-            if not vec_path.exists():
+        except Exception as exc:
+            if self.index_dim and self.index_dim != 1024:
                 raise RuntimeError(
-                    "No embedding model available. "
-                    "Run chunk_and_embed.py first."
-                )
-            import pickle, numpy as np
-            with open(vec_path, "rb") as f:
-                vec = pickle.load(f)
+                    "MiniLM index is present, but MiniLM could not be loaded for querying. "
+                    "Install/cache sentence-transformers model or rebuild the index with TF-IDF."
+                ) from exc
+            return self._load_tfidf_embedder()
 
-            def embed(text: str) -> list[float]:
-                mat  = vec.transform([text]).toarray().astype(float)
-                norm = float(np.linalg.norm(mat))
-                if norm > 0:
-                    mat = mat / norm
-                return mat[0].tolist()
+    def _load_tfidf_embedder(self):
+        """Load the saved TF-IDF vectorizer used at indexing time."""
+        vec_path = CHROMA_DIR / "tfidf_vectorizer.pkl"
+        if not vec_path.exists():
+            raise RuntimeError(
+                "No compatible embedding backend available. "
+                "Run chunk_and_embed.py first."
+            )
+        if self.index_dim and self.index_dim != 1024:
+            raise RuntimeError(
+                f"Stored index dim is {self.index_dim}, but TF-IDF query dim is 1024. "
+                "Use MiniLM for this index or rebuild with TF-IDF."
+            )
+        import numpy as np
+        with open(vec_path, "rb") as f:
+            vec = pickle.load(f)
 
-            self.embedding_backend = "TF-IDF"
-            log.info("Using TF-IDF fallback for queries")
-            return embed
+        def embed(text: str) -> list[float]:
+            mat  = vec.transform([text]).toarray().astype(float)
+            norm = float(np.linalg.norm(mat))
+            if norm > 0:
+                mat = mat / norm
+            return mat[0].tolist()
+
+        self.embedding_backend = "TF-IDF"
+        log.info("Using TF-IDF query embeddings to match the stored index")
+        return embed
 
     def query(
         self,
@@ -140,4 +186,5 @@ class VectorStore:
             "total_chunks": count,
             "collection": COLLECTION,
             "embedding_backend": self.embedding_backend,
+            "embedding_dim": self.index_dim,
         }
