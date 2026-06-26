@@ -1,7 +1,6 @@
 """
 KrishiNyay — validate_corpus.py
-Run 12 Hindi + English test queries and print top-2 retrieved chunks.
-This is your Phase 2 proof-of-work — run this after chunk_and_embed.py.
+Run Hindi + English test queries and print top retrieved chunks plus routing metrics.
 
 Run: python validate_corpus.py
 Run with LLM answers: python validate_corpus.py --with-llm
@@ -14,7 +13,7 @@ from typing import Optional
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
-logging.basicConfig(level=logging.WARNING)  # quiet for clean output
+logging.basicConfig(level=logging.WARNING)
 log = logging.getLogger("krishinyay.validate")
 
 from query_utils import normalize_query
@@ -25,9 +24,7 @@ ROUTE_DYNAMIC = "dynamic_router"
 ROUTE_FUTURE_LIVE = "future_live_api"
 
 
-# ── Test queries covering retrieval and live-data routing ──────────────────
 TEST_QUERIES = [
-    # Central schemes — Hindi
     {
         "question": "PM-KISAN ke liye kaun eligible hai?",
         "category": "income_support",
@@ -40,8 +37,6 @@ TEST_QUERIES = [
         "route": ROUTE_RAG,
         "expectation": "Should retrieve ₹6000/year in 3 installments",
     },
-
-    # Central schemes — English
     {
         "question": "What documents do I need to apply for PM-KISAN?",
         "category": "income_support",
@@ -54,24 +49,18 @@ TEST_QUERIES = [
         "route": ROUTE_RAG,
         "expectation": "Should retrieve 72-hour intimation, claim process",
     },
-
-    # State schemes
     {
         "question": "Maharashtra mein farmers ko kya extra scheme milti hai?",
         "category": None,
         "route": ROUTE_RAG,
         "expectation": "Should retrieve Namo Shetkari ₹6000 extra",
     },
-
-    # Crop insurance Hindi
     {
         "question": "Fasal bima ka premium kitna hota hai kharif crops ke liye?",
         "category": "crop_insurance",
         "route": ROUTE_RAG,
         "expectation": "Should retrieve 2% of sum insured",
     },
-
-    # Legal
     {
         "question": "Tribal farmers ke liye forest rights kya hain?",
         "category": None,
@@ -84,24 +73,18 @@ TEST_QUERIES = [
         "route": ROUTE_RAG,
         "expectation": "Should retrieve land acquisition rights",
     },
-
-    # Financial
     {
         "question": "Kisan Credit Card ke liye kaise apply karein?",
         "category": "credit",
         "route": ROUTE_RAG,
         "expectation": "Should retrieve KCC application process",
     },
-
-    # Agri science
     {
         "question": "Cotton crop mein pest attack ke liye kya karein?",
         "category": None,
         "route": ROUTE_RAG,
         "expectation": "Should retrieve crop management content",
     },
-
-    # Mixed Hindi-English (Hinglish)
     {
         "question": "PM-KISAN ka helpline number kya hai?",
         "category": "income_support",
@@ -114,8 +97,6 @@ TEST_QUERIES = [
         "route": ROUTE_RAG,
         "expectation": "Should retrieve claim settlement timeline",
     },
-
-    # Dynamic/live data router cases
     {
         "question": "Mera PM-KISAN beneficiary status kya hai?",
         "category": None,
@@ -145,26 +126,44 @@ def _dynamic_route(question: str) -> Optional[dict]:
         return None
 
 
+def _is_relevant(result: dict) -> bool:
+    similarity = float(result.get("similarity") or 0.0)
+    hybrid_score = float(result.get("hybrid_score") or 0.0)
+    return similarity > 0.05 or hybrid_score > 0.20
+
+
+def _format_scores(result: dict) -> str:
+    return (
+        f"sim={float(result.get('similarity') or 0):.3f} "
+        f"hybrid={float(result.get('hybrid_score') or 0):.3f} "
+        f"lex={float(result.get('lexical_score') or 0):.3f} "
+        f"method={result.get('retrieval_method', 'vector')}"
+    )
+
+
 def run_validation(with_llm: bool = False):
     print()
     print("═" * 70)
     print("  KRISHINYAY — CORPUS VALIDATION")
-    print(f"  {len(TEST_QUERIES)} queries  ·  RAG top-2 + dynamic routes")
+    print(f"  {len(TEST_QUERIES)} queries  ·  RAG top-3 + dynamic routes")
     print("═" * 70)
 
-    # Load vector store
     try:
         from vector_store import VectorStore
         vs = VectorStore()
         stats = vs.stats()
-        print(f"\n  Vector store: {stats['total_chunks']} chunks indexed")
+        print()
+        print(f"  Vector store: {stats['total_chunks']} chunks indexed")
         print(f"  Embeddings  : {stats['embedding_backend']} ({stats.get('embedding_dim', 'unknown')} dim)")
+        print(f"  Retrieval   : {stats.get('retrieval_mode', 'vector_only')}")
+        if stats.get("lexical_chunks"):
+            print(f"  Lexical idx : {stats['lexical_chunks']} chunks")
     except Exception as e:
-        print(f"\n  ✗ Could not load VectorStore: {e}")
+        print()
+        print(f"  ✗ Could not load VectorStore: {e}")
         print("    Run: python chunk_and_embed.py first")
         return
 
-    # Optionally load RAG chain for full LLM answers
     chain = None
     if with_llm:
         try:
@@ -174,10 +173,14 @@ def run_validation(with_llm: bool = False):
         except Exception as e:
             print(f"  LLM: not available ({e})")
 
-    # Run queries
-    passed   = 0
-    total    = len(TEST_QUERIES)
+    passed = 0
+    total = len(TEST_QUERIES)
+    route_correct = 0
+    static_total = 0
+    top1_hits = 0
+    top3_hits = 0
     all_sims = []
+    all_hybrid_scores = []
 
     for i, case in enumerate(TEST_QUERIES, 1):
         query = case["question"]
@@ -185,7 +188,8 @@ def run_validation(with_llm: bool = False):
         expected_route = case.get("route", ROUTE_RAG)
         expectation = case["expectation"]
 
-        print(f"\n{'─' * 70}")
+        print()
+        print("─" * 70)
         print(f"  [{i:02d}] {query}")
         print(f"       Route   : {expected_route}")
         print(f"       Expected: {expectation}")
@@ -195,68 +199,82 @@ def run_validation(with_llm: bool = False):
             ok = bool(dynamic and dynamic.get("route") == ROUTE_DYNAMIC)
             if ok:
                 passed += 1
+                route_correct += 1
                 print(f"  ✓ Dynamic route: {dynamic.get('route_reason', 'dynamic')}")
                 print(f"       {dynamic['answer'][:160].strip()}...")
             else:
                 print("  ✗  Expected dynamic route but query was not routed")
             continue
 
+        static_total += 1
         if dynamic:
             print(f"  ✗  Unexpected dynamic route: {dynamic.get('route_reason', 'dynamic')}")
             continue
+        route_correct += 1
 
         normalized_query = normalize_query(query)
-        results = vs.query(normalized_query, n=2, category=category)
+        results = vs.query(normalized_query, n=3, category=category)
 
         if not results:
             print("  ✗  No results returned")
             continue
 
-        best_sim = results[0]["similarity"]
-        all_sims.append(best_sim)
-
-        # A result is "passing" if similarity > 0.1 (anything relevant)
-        ok = best_sim > 0.05
-        if ok:
+        first = results[0]
+        first_relevant = _is_relevant(first)
+        any_relevant = any(_is_relevant(result) for result in results)
+        if first_relevant:
+            top1_hits += 1
+        if any_relevant:
+            top3_hits += 1
             passed += 1
 
-        status = "✓" if ok else "✗"
-        for j, r in enumerate(results, 1):
-            print(f"  {status if j == 1 else ' '} [{j}] {r['display']:35s} "
-                  f"sim={r['similarity']:.3f}")
-            print(f"       {r['text'][:110].strip()}...")
+        all_sims.append(float(first.get("similarity") or 0.0))
+        all_hybrid_scores.append(float(first.get("hybrid_score") or 0.0))
+
+        status = "✓" if any_relevant else "✗"
+        for j, result in enumerate(results, 1):
+            prefix = status if j == 1 else " "
+            print(f"  {prefix} [{j}] {result['display']:35s} {_format_scores(result)}")
+            print(f"       {result['text'][:110].strip()}...")
 
         if with_llm and chain:
             try:
                 resp = chain.ask(query, category=category)
-                print(f"\n  💬 Answer: {resp['answer'][:200].strip()}...")
+                print()
+                print(f"  💬 Answer: {resp['answer'][:200].strip()}...")
             except Exception as e:
-                print(f"\n  💬 LLM error: {e}")
+                print()
+                print(f"  💬 LLM error: {e}")
 
-    # Summary
     avg_sim = sum(all_sims) / len(all_sims) if all_sims else 0
-    print(f"\n{'═' * 70}")
-    print(f"  RESULTS: {passed}/{total} queries returned relevant chunks")
-    print(f"  Avg similarity score : {avg_sim:.3f}")
-
-    if passed == total:
-        print("  ✅  All queries passing — RAG is working correctly")
-    elif passed >= total * 0.7:
-        print("  ⚠   Most queries passing — check the failed ones above")
-        print("      Tip: add more documents to the knowledge base for those topics")
-    else:
-        print("  ✗   Low pass rate — check chunk_and_embed.py ran correctly")
-        print("      Tip: run python chunk_and_embed.py --force to re-embed")
+    avg_hybrid = sum(all_hybrid_scores) / len(all_hybrid_scores) if all_hybrid_scores else 0
+    route_accuracy = route_correct / total if total else 0
+    top1_rate = top1_hits / static_total if static_total else 0
+    top3_rate = top3_hits / static_total if static_total else 0
 
     print()
-    print("  Next step: python evaluate_rag.py  (RAGAS metrics)")
-    print("  Or jump to Phase 3: fine-tuning")
+    print("═" * 70)
+    print(f"  RESULTS: {passed}/{total} checks passed")
+    print(f"  Route accuracy     : {route_correct}/{total} ({route_accuracy:.0%})")
+    print(f"  Static top-1 hit   : {top1_hits}/{static_total} ({top1_rate:.0%})")
+    print(f"  Static top-3 hit   : {top3_hits}/{static_total} ({top3_rate:.0%})")
+    print(f"  Avg similarity     : {avg_sim:.3f}")
+    print(f"  Avg hybrid score   : {avg_hybrid:.3f}")
+
+    if passed == total and route_correct == total:
+        print("  ✅  All routing and retrieval checks passing")
+    elif passed >= total * 0.7:
+        print("  ⚠   Most checks passing — inspect misses above")
+    else:
+        print("  ✗   Low pass rate — check chunk_and_embed.py and retrieval configuration")
+
+    print()
+    print("  Next step: use eval/farmer_questions.jsonl for Phase 5 threshold tuning")
     print()
 
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    p.add_argument("--with-llm", action="store_true",
-                   help="Also generate LLM answers for each query")
+    p.add_argument("--with-llm", action="store_true", help="Also generate LLM answers for each query")
     args = p.parse_args()
     run_validation(with_llm=args.with_llm)

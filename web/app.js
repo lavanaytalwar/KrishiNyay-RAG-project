@@ -149,6 +149,8 @@ function renderHealth(health) {
     ["Chunks", health.total_chunks],
     ["Embeddings", health.embedding_backend],
     ["Dimensions", health.embedding_dim],
+    ["Retrieval", health.retrieval_mode],
+    ["Lexical chunks", health.lexical_chunks],
     ["LLM", health.llm_provider],
     ["Collection", health.collection],
     ["Router", health.dynamic_router],

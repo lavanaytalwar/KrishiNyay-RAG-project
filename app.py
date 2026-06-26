@@ -74,11 +74,23 @@ PHASE_STATUS = [
         "status": "completed",
         "summary": "Demo-ready UI states, route transparency, optional motion assets, and deployment guidance.",
     },
+    {
+        "phase": "Phase 4",
+        "title": "Farmer-facing evaluation set",
+        "status": "completed",
+        "summary": "100 realistic farmer questions with route, source-type, topic, and language validation.",
+    },
+    {
+        "phase": "Phase 5",
+        "title": "Retrieval quality upgrades",
+        "status": "in progress",
+        "summary": "Hybrid MiniLM plus lexical retrieval, score fusion, and richer top-k validation metrics.",
+    },
 ]
 
 REMAINING_WORK = [
-    "Build a stronger farmer-facing evaluation set from public sources.",
-    "Improve retrieval with hybrid search, reranking, and category/state tuning.",
+    "Tune Phase 5 thresholds against the farmer-facing evaluation set.",
+    "Add stronger reranking and category/state/source-type filtering after hybrid retrieval baselines.",
     "Add OCR for scanned PDFs such as forms with no extractable text.",
     "Replace live-source guidance with real mandi and weather API integrations.",
     "Add LangGraph workflows, voice/WhatsApp channels, and optional fine-tuning after enough validated data exists.",
@@ -143,7 +155,7 @@ MOTION_SLOTS = [
 
 DYNAMIC_PATTERNS = {
     "pmkisan_status": [
-        r"\b(status|beneficiary|registration|aadhaar|aadhar)\b",
+        r"\b(status|beneficiary status|registration status|naam|name|list|rejected|rejection|check)\b",
         r"\b(pm[\s-]?kisan|kisan)\b",
     ],
     "installment": [
@@ -152,11 +164,11 @@ DYNAMIC_PATTERNS = {
     ],
     "mandi_price": [
         r"\b(price|bhav|mandi|rate|aaj ka bhav|market)\b",
-        r"\b(gehu|wheat|rice|paddy|cotton|soybean|onion|potato|commodity)\b",
+        r"\b(gehu|wheat|rice|dhan|paddy|cotton|soybean|onion|potato|commodity)\b",
     ],
     "weather": [
-        r"\b(weather|rain|baarish|barish|mausam|temperature|forecast|spray|spraying)\b",
-        r"\b(today|tomorrow|kal|aaj|parso|crop|fasal|field|khet)\b",
+        r"\b(weather|rain|baarish|barish|paus|mausam|temperature|forecast|spray|spraying)\b",
+        r"\b(today|tomorrow|kal|aaj|parso|forecast|spray|spraying|temperature|paus)\b",
     ],
 }
 
@@ -167,6 +179,9 @@ def _matches_all(question: str, patterns: list[str]) -> bool:
 
 def route_dynamic_query(question: str) -> Optional[dict]:
     normalized = canonical_for_routing(question)
+
+    if re.search(r"\b(pmfby|fasal bima|crop insurance)\b", normalized, flags=re.I):
+        return None
 
     if _matches_all(normalized, DYNAMIC_PATTERNS["pmkisan_status"]):
         return {
@@ -334,8 +349,10 @@ def health():
             "embedding_backend": stats["embedding_backend"],
             "embedding_dim": stats.get("embedding_dim"),
             "llm_provider": chain.llm_provider,
+            "retrieval_mode": stats.get("retrieval_mode", "vector_only"),
+            "lexical_chunks": stats.get("lexical_chunks", 0),
             "dynamic_router": "enabled",
-            "phase": "Phase 3",
+            "phase": "Phase 5",
             "demo_ready": True,
         }
     except Exception as exc:
