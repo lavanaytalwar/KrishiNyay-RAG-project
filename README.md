@@ -41,7 +41,7 @@ Implemented:
 - Optional OCR hooks for scanned PDF pages in manual ingestion
 
 In progress:
-- OCR validation against scanned official PDFs when local Tesseract is available
+- Indic OCR language-pack validation on real Hindi/Marathi scanned official PDFs
 
 Planned:
 - Cross-encoder reranking
@@ -158,6 +158,8 @@ python validate_ocr_pipeline.py
 ```
 
 OCR is disabled by default. When enabled, ingestion first uses `pdfplumber` and only sends low-text pages to Tesseract. Processed JSON records include OCR metadata such as `ocr_enabled`, `ocr_engine`, `ocr_pages_attempted`, and `ocr_pages_extracted`.
+
+The Phase 6 validator creates an image-only PDF fixture and confirms that OCR extracts known text when Tesseract is installed. The core Homebrew `tesseract` package includes English data; install `tesseract-lang` separately before validating Hindi, Marathi, Punjabi, or other Indic scanned PDFs.
 
 ## Setup
 
@@ -302,7 +304,7 @@ Outputs are written under `eval/`.
 
 - The local PMFBY PDF copy may be an HTML/error page saved with a `.pdf` extension; crop-insurance coverage should be repaired with a valid official document or sample source.
 - Live beneficiary status, payment status, mandi prices, and weather should not be answered from static RAG context; the app routes these to official/live sources where possible.
-- OCR requires local system Tesseract plus Python OCR packages; without them, scanned pages are detected but not converted.
+- OCR requires local system Tesseract plus Python OCR packages; core English OCR is validated, while Indic OCR requires extra Tesseract language data.
 - `data/` and `chroma_db/` are ignored intentionally, so reproducible demos should use `sample_data/` or re-run ingestion locally.
 
 ## Resume Bullet

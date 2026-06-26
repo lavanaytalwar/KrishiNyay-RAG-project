@@ -89,13 +89,13 @@ PHASE_STATUS = [
     {
         "phase": "Phase 6",
         "title": "OCR for scanned PDFs",
-        "status": "in progress",
-        "summary": "Optional Tesseract OCR path for scanned pages in manual official PDF ingestion.",
+        "status": "completed",
+        "summary": "Tesseract OCR path for scanned pages in manual official PDF ingestion, with image-PDF validation.",
     },
 ]
 
 REMAINING_WORK = [
-    "Validate OCR on real scanned official PDFs when local Tesseract is installed.",
+    "Add Indic OCR language packs and validate on real Hindi/Marathi scanned official PDFs.",
     "Add stronger reranking and category/state/source-type filtering beyond the hybrid baseline.",
     "Replace live-source guidance with real mandi and weather API integrations.",
     "Add LangGraph workflows, voice/WhatsApp channels, and optional fine-tuning after enough validated data exists.",
