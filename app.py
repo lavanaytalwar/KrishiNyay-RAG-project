@@ -49,6 +49,98 @@ class IngestResponse(BaseModel):
     chunks_added: int
 
 
+PHASE_STATUS = [
+    {
+        "phase": "Phase 0",
+        "title": "Repo hygiene and MiniLM baseline",
+        "status": "completed",
+        "summary": "Clean baseline with MiniLM-first retrieval, slim requirements, and ignored generated artifacts.",
+    },
+    {
+        "phase": "Phase 1",
+        "title": "Manual official PDF ingestion",
+        "status": "completed",
+        "summary": "Manifest-based ingestion for curated government PDFs with validation and rebuild workflow.",
+    },
+    {
+        "phase": "Phase 2",
+        "title": "Retrieval and routing stability",
+        "status": "completed",
+        "summary": "Query normalization, dynamic routing for live data, richer health metadata, and smoke validation.",
+    },
+    {
+        "phase": "Phase 3",
+        "title": "FastAPI and frontend demo polish",
+        "status": "completed",
+        "summary": "Demo-ready UI states, route transparency, optional motion assets, and deployment guidance.",
+    },
+]
+
+REMAINING_WORK = [
+    "Build a stronger farmer-facing evaluation set from public sources.",
+    "Improve retrieval with hybrid search, reranking, and category/state tuning.",
+    "Add OCR for scanned PDFs such as forms with no extractable text.",
+    "Replace live-source guidance with real mandi and weather API integrations.",
+    "Add LangGraph workflows, voice/WhatsApp channels, and optional fine-tuning after enough validated data exists.",
+]
+
+DEMO_QUESTIONS = [
+    {
+        "label": "PM-KISAN amount",
+        "question": "PM-KISAN mein kitne paise milte hain aur kab?",
+        "kind": "rag",
+    },
+    {
+        "label": "PMFBY claim",
+        "question": "How do I claim PMFBY crop insurance after flood damage?",
+        "kind": "rag",
+    },
+    {
+        "label": "Live status",
+        "question": "Mera PM-KISAN beneficiary status kya hai?",
+        "kind": "dynamic_router",
+    },
+    {
+        "label": "Mandi price",
+        "question": "Aaj soybean ka mandi bhav kya hai?",
+        "kind": "dynamic_router",
+    },
+    {
+        "label": "Weather advisory",
+        "question": "Kal baarish hogi kya, spraying karu?",
+        "kind": "dynamic_router",
+    },
+]
+
+MOTION_SLOTS = [
+    {
+        "slot": "hero",
+        "label": "Farmer AI assistant motion",
+        "style": "css_farmer_ai",
+    },
+    {
+        "slot": "rag-flow",
+        "label": "RAG pipeline motion",
+        "style": "css_pipeline",
+    },
+    {
+        "slot": "router",
+        "label": "Dynamic router motion",
+        "style": "css_router",
+    },
+    {
+        "slot": "retrieval",
+        "label": "Retrieval motion",
+        "style": "css_sticky_retrieval",
+    },
+    {
+        "slot": "sources",
+        "label": "Sources and citations motion",
+        "style": "css_source_stack",
+    },
+]
+
+
 DYNAMIC_PATTERNS = {
     "pmkisan_status": [
         r"\b(status|beneficiary|registration|aadhaar|aadhar)\b",
@@ -243,9 +335,26 @@ def health():
             "embedding_dim": stats.get("embedding_dim"),
             "llm_provider": chain.llm_provider,
             "dynamic_router": "enabled",
+            "phase": "Phase 3",
+            "demo_ready": True,
         }
     except Exception as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/demo-config")
+def demo_config():
+    return {
+        "app": "KrishiNyay AI",
+        "phase_status": PHASE_STATUS,
+        "remaining_work": REMAINING_WORK,
+        "demo_questions": DEMO_QUESTIONS,
+        "motion_slots": MOTION_SLOTS,
+        "media_note": (
+            "The homepage uses lightweight CSS/HTML motion UI. Reference MP4s "
+            "stay out of the app bundle unless deliberately converted into assets later."
+        ),
+    }
 
 
 @app.post("/query")

@@ -164,8 +164,9 @@ def _choose_llm():
         r = requests.get("http://localhost:11434/api/tags", timeout=2)
         if r.status_code == 200:
             models = [m["name"] for m in r.json().get("models", [])]
+            configured = os.environ.get("OLLAMA_MODEL")
             llama  = next((m for m in models if "llama" in m.lower()), None)
-            model  = llama or "llama3.1:8b"
+            model  = configured or llama or "llama3.1:8b"
             log.info(f"✓ Using Ollama: {model}")
             return f"ollama:{model}", lambda prompt: _call_ollama(prompt, model)
     except Exception:

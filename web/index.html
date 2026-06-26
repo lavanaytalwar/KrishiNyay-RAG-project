@@ -10,7 +10,9 @@
     <div class="app-shell">
       <aside class="sidebar">
         <a class="brand" href="#home" data-route="home">
-          <span class="brand-mark">K</span>
+          <span class="brand-mark">
+            <img src="/assets/brand-icon.png" alt="" />
+          </span>
           <span>
             <strong>KrishiNyay AI</strong>
             <small>Farmer RAG assistant</small>
@@ -61,40 +63,59 @@
                 <a class="primary-link" href="#chat" data-route="chat">Open Chat</a>
                 <a class="secondary-link" href="#knowledge" data-route="knowledge">View Source Checks</a>
               </div>
-            </div>
-
-            <div class="hero-animation-stack" aria-label="Project animations">
-              <div class="animation-card large" data-animation="sticky-notes">
-                <div class="animation-fallback sticky-cluster">
-                  <span class="sticky-badge badge-yellow">FAQ</span>
-                  <span class="sticky-badge badge-blue">Guidelines</span>
-                  <span class="sticky-badge badge-green">Scheme</span>
-                  <span class="sticky-badge badge-pink">State</span>
+              <div class="hero-widget-row" aria-label="Project motion widgets">
+                <div class="animation-card large" data-motion-slot="hero" data-animation="farmer-ai">
+                  <div class="motion-farmer-ai">
+                    <div class="sun-orb"></div>
+                    <div class="field-lines"><span></span><span></span><span></span></div>
+                    <div class="farmer-avatar">
+                      <span class="turban"></span>
+                      <span class="face"></span>
+                      <span class="moustache"></span>
+                      <span class="body"></span>
+                      <span class="scarf"></span>
+                    </div>
+                    <div class="phone-card">
+                      <strong>AI</strong>
+                      <span></span><span></span><span></span>
+                    </div>
+                    <div class="holo-chip chip-one">Scheme</div>
+                    <div class="holo-chip chip-two">PMFBY</div>
+                    <div class="holo-chip chip-three">KCC</div>
+                  </div>
+                </div>
+                <div class="animation-card small" data-motion-slot="rag-flow" data-animation="rag-flow">
+                  <div class="animation-fallback flow-lines">
+                    <span>Query</span>
+                    <i></i>
+                    <span>Retrieve</span>
+                    <i></i>
+                    <span>Answer</span>
+                  </div>
                 </div>
               </div>
-              <div class="animation-card small" data-animation="rag-flow">
-                <div class="animation-fallback flow-lines">
-                  <span>Query</span>
-                  <i></i>
-                  <span>Retrieve</span>
-                  <i></i>
-                  <span>Answer</span>
-                </div>
+              <div class="phase-grid" id="phaseGrid" aria-label="Completed project phases">
+                <div class="empty-state">Loading phase status...</div>
               </div>
             </div>
           </div>
 
           <div class="explain-grid">
             <article class="explain-card">
-              <div class="animation-slot" data-animation="router">
-                <div class="animation-fallback pulse-dot"></div>
+              <div class="animation-slot" data-motion-slot="router" data-animation="router">
+                <div class="motion-router">
+                  <span class="router-core"></span>
+                  <span class="router-node node-live">Live</span>
+                  <span class="router-node node-rag">RAG</span>
+                  <span class="router-node node-safe">Safe</span>
+                </div>
               </div>
               <span class="sticky-badge badge-pink">Router</span>
               <h3>Dynamic questions are intercepted first.</h3>
               <p>Status, instalment, and mandi-price questions go to official live sources instead of stale RAG chunks.</p>
             </article>
             <article class="explain-card">
-              <div class="animation-slot" data-animation="retrieval">
+              <div class="animation-slot" data-motion-slot="retrieval" data-animation="retrieval">
                 <div class="animation-fallback orbit-notes">
                   <span></span><span></span><span></span>
                 </div>
@@ -104,7 +125,7 @@
               <p>The backend retrieves document chunks, builds context, and returns source previews with similarity scores.</p>
             </article>
             <article class="explain-card">
-              <div class="animation-slot" data-animation="sources">
+              <div class="animation-slot" data-motion-slot="sources" data-animation="sources">
                 <div class="animation-fallback source-stack">
                   <span></span><span></span><span></span>
                 </div>
@@ -157,6 +178,10 @@
                 </div>
                 <span class="sticky-badge badge-blue" id="sourceCount">0 chunks</span>
               </div>
+              <div class="route-trace" id="routeTrace">
+                <span class="sticky-badge badge-gray">No query yet</span>
+                <p>Ask a question to see whether the backend used static RAG or the dynamic live-data router.</p>
+              </div>
               <div class="source-list" id="sourceList">
                 <div class="empty-state">Sources will appear after your first RAG answer.</div>
               </div>
@@ -189,6 +214,14 @@
               <button class="test-card" data-question="Maharashtra mein farmers ko kya extra scheme milti hai?">
                 <span class="sticky-badge badge-green">State</span>
                 Maharashtra support
+              </button>
+              <button class="test-card" data-question="Mera PM-KISAN beneficiary status kya hai?">
+                <span class="sticky-badge badge-pink">Live</span>
+                PM-KISAN status router
+              </button>
+              <button class="test-card" data-question="Aaj soybean ka mandi bhav kya hai?">
+                <span class="sticky-badge badge-blue">Market</span>
+                Mandi live router
               </button>
             </div>
           </div>
@@ -249,12 +282,14 @@
             <div class="health-grid" id="healthGrid">
               <div class="empty-state">Loading system state...</div>
             </div>
+            <div class="demo-checklist" id="demoChecklist">
+              <div class="empty-state">Loading remaining work...</div>
+            </div>
           </div>
         </section>
       </main>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
     <script src="/assets/app.js"></script>
   </body>
 </html>

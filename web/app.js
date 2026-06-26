@@ -1,13 +1,23 @@
 const state = {
   lastSources: [],
   health: null,
+  demoConfig: null,
 };
 
 const pages = {
+  home: document.querySelector("#page-home"),
   chat: document.querySelector("#page-chat"),
   knowledge: document.querySelector("#page-knowledge"),
   ingest: document.querySelector("#page-ingest"),
   system: document.querySelector("#page-system"),
+};
+
+const pageTitles = {
+  home: "A source-grounded farmer assistant for Indian schemes.",
+  chat: "Ask farmer questions and inspect the evidence.",
+  knowledge: "Run demo checks against trusted sources.",
+  ingest: "Add small official documents during a live demo.",
+  system: "Verify backend readiness before presenting.",
 };
 
 const navItems = document.querySelectorAll("[data-route]");
@@ -22,6 +32,10 @@ const statusStrip = document.querySelector("#statusStrip");
 const healthGrid = document.querySelector("#healthGrid");
 const ingestForm = document.querySelector("#ingestForm");
 const ingestResult = document.querySelector("#ingestResult");
+const pageTitle = document.querySelector("#pageTitle");
+const phaseGrid = document.querySelector("#phaseGrid");
+const routeTrace = document.querySelector("#routeTrace");
+const demoChecklist = document.querySelector("#demoChecklist");
 
 function escapeHtml(value) {
   return String(value || "")
@@ -33,24 +47,29 @@ function escapeHtml(value) {
 }
 
 function setRoute(route) {
-  const selected = pages[route] ? route : "chat";
+  const selected = pages[route] ? route : "home";
   Object.entries(pages).forEach(([key, page]) => {
     page.classList.toggle("active", key === selected);
   });
   navItems.forEach((item) => {
     item.classList.toggle("active", item.dataset.route === selected);
   });
+  pageTitle.textContent = pageTitles[selected] || pageTitles.home;
 }
 
-function addMessage(role, text) {
+function addMessage(role, text, options = {}) {
   const article = document.createElement("article");
-  article.className = `message ${role}`;
+  article.className = `message ${role}${options.loading ? " loading" : ""}`;
   article.innerHTML = `
     <div class="avatar">${role === "user" ? "You" : "AI"}</div>
-    <div class="bubble"><p>${escapeHtml(text).replaceAll("\n", "<br>")}</p></div>
+    <div class="bubble">
+      ${options.badge ? `<span class="sticky-badge ${escapeHtml(options.badgeClass || "badge-gray")}">${escapeHtml(options.badge)}</span>` : ""}
+      <p>${escapeHtml(text).replaceAll("\n", "<br>")}</p>
+    </div>
   `;
   messages.appendChild(article);
   messages.scrollTop = messages.scrollHeight;
+  return article;
 }
 
 function badgeClass(index) {
@@ -64,7 +83,7 @@ function formatSimilarity(value) {
 
 function renderSources(sources) {
   state.lastSources = sources || [];
-  sourceCount.textContent = `${state.lastSources.length} chunks`;
+  sourceCount.textContent = `${state.lastSources.length} source${state.lastSources.length === 1 ? "" : "s"}`;
 
   if (!state.lastSources.length) {
     sourceList.innerHTML = `<div class="empty-state">No retrieved chunks for this response.</div>`;
@@ -94,12 +113,30 @@ function renderSources(sources) {
     .join("");
 }
 
+function renderRouteTrace(data) {
+  if (!data) {
+    routeTrace.innerHTML = `
+      <span class="sticky-badge badge-gray">No query yet</span>
+      <p>Ask a question to see whether the backend used static RAG or the dynamic live-data router.</p>
+    `;
+    return;
+  }
+
+  const isDynamic = data.route === "dynamic_router";
+  const routeLabel = isDynamic ? "Dynamic Router" : "Static RAG";
+  const reason = data.route_reason || data.normalized_question || "retrieval";
+  const provider = data.llm_provider || "unknown";
+  routeTrace.innerHTML = `
+    <span class="sticky-badge ${isDynamic ? "badge-pink" : "badge-yellow"}">${routeLabel}</span>
+    <span class="sticky-badge badge-blue">${escapeHtml(provider)}</span>
+    <p>${escapeHtml(reason)}</p>
+  `;
+}
+
 function renderStatus(health) {
   const badges = [
-    ["badge-green", health.status || "unknown"],
     ["badge-blue", `${health.total_chunks ?? 0} chunks`],
     ["badge-yellow", health.embedding_backend || "embedding unknown"],
-    ["badge-pink", health.llm_provider || "llm unknown"],
   ];
   statusStrip.innerHTML = badges
     .map(([klass, text]) => `<span class="sticky-badge ${klass}">${escapeHtml(text)}</span>`)
@@ -111,9 +148,12 @@ function renderHealth(health) {
     ["Status", health.status],
     ["Chunks", health.total_chunks],
     ["Embeddings", health.embedding_backend],
+    ["Dimensions", health.embedding_dim],
     ["LLM", health.llm_provider],
     ["Collection", health.collection],
     ["Router", health.dynamic_router],
+    ["Phase", health.phase],
+    ["Demo", health.demo_ready ? "ready" : "not ready"],
   ];
 
   healthGrid.innerHTML = rows
@@ -127,6 +167,78 @@ function renderHealth(health) {
       `
     )
     .join("");
+}
+
+function renderPhaseGrid(config) {
+  const phases = config?.phase_status || [];
+  if (!phases.length) {
+    phaseGrid.innerHTML = `<div class="empty-state">Phase status is unavailable.</div>`;
+    return;
+  }
+
+  phaseGrid.innerHTML = phases
+    .map((phase, index) => `
+      <article class="phase-card">
+        <span class="sticky-badge ${badgeClass(index)}">${escapeHtml(phase.status)}</span>
+        <strong>${escapeHtml(phase.phase)} · ${escapeHtml(phase.title)}</strong>
+        <p>${escapeHtml(phase.summary)}</p>
+      </article>
+    `)
+    .join("");
+}
+
+function renderDemoChecklist(config) {
+  const remaining = config?.remaining_work || [];
+  const mediaNote = config?.media_note || "";
+  demoChecklist.innerHTML = `
+    <div class="checklist-block">
+      <h3>What remains after Phase 3</h3>
+      <ul>
+        ${remaining.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+      </ul>
+      <p>${escapeHtml(mediaNote)}</p>
+    </div>
+  `;
+}
+
+function renderDemoQuestions(config) {
+  const questions = config?.demo_questions || [];
+  if (!questions.length) return;
+
+  document.querySelector("#examples").innerHTML = questions
+    .map((item) => `
+      <button data-kind="${escapeHtml(item.kind)}" title="${escapeHtml(item.label)}">
+        ${escapeHtml(item.question)}
+      </button>
+    `)
+    .join("");
+}
+
+function annotateMotionSlots(config) {
+  const slots = config?.motion_slots || [];
+  const targets = Array.from(document.querySelectorAll("[data-motion-slot]"));
+  slots.forEach((slot) => {
+    const target = targets.find((element) => element.dataset.motionSlot === slot.slot);
+    if (!target) return;
+    target.setAttribute("aria-label", slot.label);
+    target.dataset.motionStyle = slot.style;
+  });
+}
+
+async function fetchDemoConfig() {
+  try {
+    const response = await fetch("/demo-config");
+    if (!response.ok) throw new Error(await response.text());
+    const config = await response.json();
+    state.demoConfig = config;
+    renderPhaseGrid(config);
+    renderDemoChecklist(config);
+    renderDemoQuestions(config);
+    annotateMotionSlots(config);
+  } catch (error) {
+    phaseGrid.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
+    demoChecklist.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
+  }
 }
 
 async function fetchHealth() {
@@ -145,6 +257,11 @@ async function fetchHealth() {
 
 async function askQuestion(question) {
   addMessage("user", question);
+  const loadingMessage = addMessage("assistant", "Retrieving trusted sources and checking live-data routing...", {
+    loading: true,
+    badge: "Working",
+    badgeClass: "badge-blue",
+  });
   sendButton.disabled = true;
   sendButton.textContent = "Asking";
   modeBadge.textContent = "Retrieving";
@@ -157,11 +274,17 @@ async function askQuestion(question) {
     });
     if (!response.ok) throw new Error(await response.text());
     const data = await response.json();
-    addMessage("assistant", data.answer);
+    loadingMessage.remove();
+    addMessage("assistant", data.answer, {
+      badge: data.route === "dynamic_router" ? "Dynamic Router" : "RAG Answer",
+      badgeClass: data.route === "dynamic_router" ? "badge-pink" : "badge-yellow",
+    });
     renderSources(data.sources || []);
+    renderRouteTrace(data);
     modeBadge.textContent = data.mode === "dynamic_router" ? "Dynamic Router" : "RAG";
     modeBadge.className = `sticky-badge ${data.mode === "dynamic_router" ? "badge-pink" : "badge-yellow"}`;
   } catch (error) {
+    loadingMessage.remove();
     addMessage("assistant", `I could not answer that request. ${error.message}`);
     modeBadge.textContent = "Error";
     modeBadge.className = "sticky-badge badge-pink";
@@ -224,5 +347,7 @@ ingestForm.addEventListener("submit", async (event) => {
 document.querySelector("#refreshHealth").addEventListener("click", fetchHealth);
 
 window.addEventListener("hashchange", () => setRoute(window.location.hash.replace("#", "")));
-setRoute(window.location.hash.replace("#", "") || "chat");
+setRoute(window.location.hash.replace("#", "") || "home");
+renderRouteTrace(null);
+fetchDemoConfig();
 fetchHealth();

@@ -16,9 +16,9 @@ Completed phases:
 - Phase 0 — repo hygiene and truthful MiniLM baseline.
 - Phase 1 — manual PDF ingestion workflow and curated official PDF ingestion.
 - Phase 2 — retrieval normalization, dynamic live-data routing, health metadata, and validation upgrade.
+- Phase 3 — FastAPI/frontend demo polish, CSS motion UI, better UX states, and deployment configuration.
 
 What remains:
-- Phase 3 — frontend/FastAPI demo polish, animations, better UX states, and deployment-ready configuration.
 - Phase 4 — stronger farmer-facing evaluation set from public sources such as government FAQs, farmer forums, YouTube comments, NGOs, and help sites.
 - Phase 5 — retrieval quality upgrades such as hybrid search, reranking, category/state filters, and richer source ranking.
 - Later phases — OCR for scanned PDFs, live mandi/weather API integrations, LangGraph workflows, voice/WhatsApp channels, and optional fine-tuning only after enough validated data exists.
@@ -31,15 +31,15 @@ Implemented:
 - MiniLM-first embeddings with TF-IDF fallback
 - FastAPI backend with `/health`, `/query`, and `/ingest`
 - Static web UI for chat, source inspection, ingestion, and system status
+- Demo UI polish with phase cards, route trace, loading states, and CSS/HTML motion UI
 - Offline validation and RAGAS-style evaluation scripts
 - Tracked `sample_data/` so a fresh clone has a small demo corpus
 - Manifest-based manual PDF ingestion for curated official PDFs
 
 In progress:
-- Additional curated official PDFs for stronger demo coverage
+- Farmer-facing evaluation-set design and source collection
 - Retrieval quality tuning by category and state
-- README screenshots and demo GIF
-- More focused tests
+- More focused tests beyond the smoke validation set
 
 Planned:
 - Hybrid search with BM25 plus vector search
@@ -101,7 +101,9 @@ weather / spraying questions       → IMD/local advisory guidance
 ├── sample_data/            # Small tracked demo corpus
 ├── corpus/pdfs/            # Tracked templates and future curated PDF corpus
 ├── web/                    # Static frontend
+├── web/media/              # Ignored reference media for motion design
 ├── eval/                   # Evaluation output
+├── .env.example            # Local/deployment environment template
 ├── requirements.txt        # Direct runtime dependencies
 └── requirements-full.txt   # Full local environment freeze
 ```
@@ -201,8 +203,46 @@ API endpoints:
 | Endpoint | Purpose |
 |---|---|
 | `GET /health` | Shows indexed chunks, collection, embedding backend, embedding dimension, and LLM provider |
+| `GET /demo-config` | Shows completed phases, remaining work, demo questions, and motion UI slots |
 | `POST /query` | Answers a question using dynamic routing or RAG, with `route` and source metadata |
 | `POST /ingest` | Adds a text document to the live vector store |
+
+## Frontend Motion UI
+
+The frontend uses CSS/HTML motion UI instead of embedding raw MP4 files. This keeps the demo lightweight, easier to deploy, and less dependent on large generated media.
+
+Current motion concepts:
+
+```text
+Farmer + AI assistant hero
+RAG pipeline flow
+Dynamic live-data router
+Sticky-note retrieval
+Source/citation stack
+```
+
+MP4 files can still be kept locally in `web/media/` as design references, but video files are ignored by git and are not loaded by the app.
+
+## Deployment Notes
+
+Copy the environment template when preparing a hosted demo:
+
+```bash
+cp .env.example .env
+```
+
+Build and run with Docker:
+
+```bash
+docker build -t krishinyay-rag .
+docker run --env-file .env -p 8000:8000 krishinyay-rag
+```
+
+For platforms that provide `PORT`, the included `Dockerfile` runs:
+
+```bash
+uvicorn app:app --host 0.0.0.0 --port ${PORT:-7860}
+```
 
 ## LLM Modes
 

@@ -19,6 +19,17 @@ krishinyay-env/
 # OS / IDE
 .DS_Store
 .vscode/
+
+# Local secrets/config
+.env
+.env.*
+!.env.example
+
+# Optional large local demo media
+web/media/*.mp4
+web/media/*.mov
+web/media/*.webm
+
 chroma_db/
 data/
 logs/
