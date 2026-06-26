@@ -2,7 +2,7 @@
 
 KrishiNyay AI is an India-focused retrieval-augmented generation (RAG) project for answering farmer questions about government schemes, crop insurance, farm credit, legal rights, and agriculture support using trusted documents.
 
-The current goal is a small, runnable, demo-ready RAG system before adding advanced agents, voice, OCR, WhatsApp, or vision features.
+The current goal is a small, runnable, demo-ready RAG system before adding advanced agents, voice, WhatsApp, or vision features.
 
 ## Project Status
 
@@ -11,17 +11,19 @@ Current baseline:
 - Embedding dimension: 384
 - Local indexed corpus: 1,748 chunks
 - Retrieval validation: 15/15 passing on the current RAG + dynamic routing smoke set
+- Farmer eval gate: 100 farmer-facing questions with Phase 5 hybrid retrieval validation
 
 Completed phases:
 - Phase 0 — repo hygiene and truthful MiniLM baseline.
 - Phase 1 — manual PDF ingestion workflow and curated official PDF ingestion.
 - Phase 2 — retrieval normalization, dynamic live-data routing, health metadata, and validation upgrade.
 - Phase 3 — FastAPI/frontend demo polish, CSS motion UI, better UX states, and deployment configuration.
+- Phase 4 — farmer-facing eval dataset with route, source-type, language, and topic coverage.
+- Phase 5 — hybrid MiniLM + lexical retrieval baseline with full eval regression gate.
 
 What remains:
-- Phase 4 — stronger farmer-facing evaluation set from public sources such as government FAQs, farmer forums, YouTube comments, NGOs, and help sites.
-- Phase 5 — retrieval quality upgrades such as hybrid search, reranking, category/state filters, and richer source ranking.
-- Later phases — OCR for scanned PDFs, live mandi/weather API integrations, LangGraph workflows, voice/WhatsApp channels, and optional fine-tuning only after enough validated data exists.
+- Phase 6 — OCR for scanned PDFs in manual ingestion.
+- Later phases — live mandi/weather API integrations, LangGraph workflows, voice/WhatsApp channels, and optional fine-tuning only after enough validated data exists.
 
 Implemented:
 - Data ingestion scripts for government scheme pages and PDFs
@@ -35,16 +37,14 @@ Implemented:
 - Offline validation and RAGAS-style evaluation scripts
 - Tracked `sample_data/` so a fresh clone has a small demo corpus
 - Manifest-based manual PDF ingestion for curated official PDFs
+- Hybrid MiniLM + lexical retrieval with source-aware guardrails
+- Optional OCR hooks for scanned PDF pages in manual ingestion
 
 In progress:
-- Farmer-facing evaluation-set design and source collection
-- Retrieval quality tuning by category and state
-- More focused tests beyond the smoke validation set
+- OCR validation against scanned official PDFs when local Tesseract is available
 
 Planned:
-- Hybrid search with BM25 plus vector search
 - Cross-encoder reranking
-- OCR for scanned PDFs
 - Voice input with Indic ASR/TTS
 - LangGraph agent workflows
 - Live mandi/weather APIs
@@ -149,6 +149,15 @@ python validate_corpus.py
 ```
 
 Manifest entries require `name`, `display`, `file`, `category`, `state`, `language`, and `priority`, plus either `url` or `source_note`. Invalid files are rejected if they are not real PDFs, are HTML/error pages saved as `.pdf`, have duplicate names, or contain too little extractable text.
+
+For scanned or image-only official PDFs, install the optional OCR dependencies and the system Tesseract binary, then run:
+
+```bash
+python ingest_manual_pdfs.py --manifest data/manual_pdfs/manifest.json --ocr
+python validate_ocr_pipeline.py
+```
+
+OCR is disabled by default. When enabled, ingestion first uses `pdfplumber` and only sends low-text pages to Tesseract. Processed JSON records include OCR metadata such as `ocr_enabled`, `ocr_engine`, `ocr_pages_attempted`, and `ocr_pages_extracted`.
 
 ## Setup
 
@@ -293,6 +302,7 @@ Outputs are written under `eval/`.
 
 - The local PMFBY PDF copy may be an HTML/error page saved with a `.pdf` extension; crop-insurance coverage should be repaired with a valid official document or sample source.
 - Live beneficiary status, payment status, mandi prices, and weather should not be answered from static RAG context; the app routes these to official/live sources where possible.
+- OCR requires local system Tesseract plus Python OCR packages; without them, scanned pages are detected but not converted.
 - `data/` and `chroma_db/` are ignored intentionally, so reproducible demos should use `sample_data/` or re-run ingestion locally.
 
 ## Resume Bullet

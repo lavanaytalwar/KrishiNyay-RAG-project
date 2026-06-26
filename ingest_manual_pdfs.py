@@ -16,9 +16,11 @@ import logging
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import pdfplumber
+
+from ocr_utils import check_ocr_dependencies, ocr_pdf_pages
 
 
 ROOT = Path(__file__).resolve().parent
@@ -118,16 +120,23 @@ def reject_non_pdf(pdf_path: Path) -> None:
         raise ValueError("file does not start with a PDF header")
 
 
-def extract_pdf_text(pdf_path: Path) -> dict[str, Any]:
+def extract_pdf_text(
+    pdf_path: Path,
+    use_ocr: bool = False,
+    ocr_language: str = "eng+hin",
+    ocr_dpi: int = 200,
+    ocr_min_page_chars: int = 30,
+    ocr_max_pages: Optional[int] = None,
+) -> dict[str, Any]:
     pages_data = []
-    scanned_pages = 0
+    scanned_page_numbers = []
 
     with pdfplumber.open(pdf_path) as pdf:
         total_pages = len(pdf.pages)
         for idx, page in enumerate(pdf.pages, 1):
             text = (page.extract_text() or "").strip()
-            if len(text) < 30:
-                scanned_pages += 1
+            if len(text) < ocr_min_page_chars:
+                scanned_page_numbers.append(idx)
                 continue
             text = re.sub(r"\n{3,}", "\n\n", text)
             text = re.sub(r" {2,}", " ", text)
@@ -135,13 +144,44 @@ def extract_pdf_text(pdf_path: Path) -> dict[str, Any]:
                 "page": idx,
                 "text": text,
                 "char_count": len(text),
+                "extraction_method": "pdfplumber",
             })
 
+    ocr_attempted_pages = []
+    ocr_engine = ""
+    ocr_renderer = ""
+    if use_ocr and scanned_page_numbers:
+        ocr_attempted_pages = scanned_page_numbers[:ocr_max_pages] if ocr_max_pages else scanned_page_numbers
+        ocr_result = ocr_pdf_pages(
+            pdf_path,
+            page_numbers=ocr_attempted_pages,
+            language=ocr_language,
+            dpi=ocr_dpi,
+        )
+        ocr_engine = ocr_result["ocr_engine"]
+        ocr_renderer = ocr_result["ocr_renderer"]
+        pages_data.extend(
+            page for page in ocr_result["pages"] if page.get("text", "").strip()
+        )
+
+    pages_data.sort(key=lambda page: page["page"])
     full_text = "\n\n".join(page["text"] for page in pages_data)
+    deps = check_ocr_dependencies()
     return {
         "pages": pages_data,
         "total_pages": total_pages,
-        "scanned_pages": scanned_pages,
+        "scanned_pages": len(scanned_page_numbers),
+        "scanned_page_numbers": scanned_page_numbers,
+        "ocr_enabled": use_ocr,
+        "ocr_available": deps["available"],
+        "ocr_engine": ocr_engine,
+        "ocr_renderer": ocr_renderer,
+        "ocr_language": ocr_language if use_ocr else "",
+        "ocr_dpi": ocr_dpi if use_ocr else None,
+        "ocr_pages_attempted": len(ocr_attempted_pages),
+        "ocr_pages_extracted": sum(
+            1 for page in pages_data if page.get("extraction_method") == "ocr_tesseract"
+        ),
         "text": full_text,
         "char_count": len(full_text),
     }
@@ -152,6 +192,11 @@ def process_item(
     manifest_path: Path,
     force: bool,
     min_chars: int,
+    ocr_enabled: bool,
+    ocr_language: str,
+    ocr_dpi: int,
+    ocr_min_page_chars: int,
+    ocr_max_pages: Optional[int],
     log: logging.Logger,
 ) -> tuple[str, str]:
     name = item["name"]
@@ -163,8 +208,22 @@ def process_item(
         return name, "skipped"
 
     reject_non_pdf(pdf_path)
-    extracted = extract_pdf_text(pdf_path)
+    use_ocr = ocr_enabled or bool(item.get("ocr_required"))
+    extracted = extract_pdf_text(
+        pdf_path,
+        use_ocr=use_ocr,
+        ocr_language=str(item.get("ocr_language") or ocr_language),
+        ocr_dpi=ocr_dpi,
+        ocr_min_page_chars=ocr_min_page_chars,
+        ocr_max_pages=ocr_max_pages,
+    )
     if extracted["char_count"] < min_chars:
+        if extracted["scanned_pages"] and not use_ocr:
+            raise ValueError(
+                f"too little extractable text ({extracted['char_count']} chars) and "
+                f"{extracted['scanned_pages']} scanned/low-text page(s); rerun with "
+                "--ocr after installing OCR dependencies"
+            )
         raise ValueError(
             f"too little extractable text ({extracted['char_count']} chars); "
             "likely scanned or unsuitable for text RAG"
@@ -185,6 +244,15 @@ def process_item(
         "pages": extracted["pages"],
         "total_pages": extracted["total_pages"],
         "scanned_pages": extracted["scanned_pages"],
+        "scanned_page_numbers": extracted["scanned_page_numbers"],
+        "ocr_enabled": extracted["ocr_enabled"],
+        "ocr_available": extracted["ocr_available"],
+        "ocr_engine": extracted["ocr_engine"],
+        "ocr_renderer": extracted["ocr_renderer"],
+        "ocr_language": extracted["ocr_language"],
+        "ocr_dpi": extracted["ocr_dpi"],
+        "ocr_pages_attempted": extracted["ocr_pages_attempted"],
+        "ocr_pages_extracted": extracted["ocr_pages_extracted"],
         "text": extracted["text"],
         "char_count": extracted["char_count"],
         "ingested_at": datetime.now().isoformat(),
@@ -197,11 +265,23 @@ def process_item(
         f"{extracted['char_count']:>8,} chars → {out_path.name}"
     )
     if extracted["scanned_pages"]:
-        log.warning(f"    {extracted['scanned_pages']} page(s) had little/no extractable text")
+        log.warning(
+            f"    {extracted['scanned_pages']} page(s) had little/no extractable text; "
+            f"OCR extracted {extracted['ocr_pages_extracted']} page(s)"
+        )
     return name, "processed"
 
 
-def run(manifest: Path, force: bool = False, min_chars: int = 500) -> dict[str, int]:
+def run(
+    manifest: Path,
+    force: bool = False,
+    min_chars: int = 500,
+    ocr_enabled: bool = False,
+    ocr_language: str = "eng+hin",
+    ocr_dpi: int = 200,
+    ocr_min_page_chars: int = 30,
+    ocr_max_pages: Optional[int] = None,
+) -> dict[str, int]:
     log = setup_logging()
     manifest = manifest.expanduser().resolve()
 
@@ -209,6 +289,11 @@ def run(manifest: Path, force: bool = False, min_chars: int = 500) -> dict[str, 
     log.info("  MANUAL PDF INGESTION — KrishiNyay Phase 1")
     log.info("=" * 60)
     log.info(f"Manifest: {manifest}")
+    if ocr_enabled:
+        deps = check_ocr_dependencies()
+        log.info(f"OCR enabled: available={deps['available']} renderer={deps['renderer']} engine={deps['engine']}")
+        if not deps["available"]:
+            log.warning(f"OCR dependencies missing: {', '.join(deps['missing'])}")
 
     documents = load_manifest(manifest)
     seen_names: set[str] = set()
@@ -222,7 +307,18 @@ def run(manifest: Path, force: bool = False, min_chars: int = 500) -> dict[str, 
             continue
 
         try:
-            _, status = process_item(item, manifest, force, min_chars, log)
+            _, status = process_item(
+                item,
+                manifest,
+                force,
+                min_chars,
+                ocr_enabled,
+                ocr_language,
+                ocr_dpi,
+                ocr_min_page_chars,
+                ocr_max_pages,
+                log,
+            )
             results[status] += 1
         except Exception as exc:
             results["failed"] += 1
@@ -242,9 +338,23 @@ def main() -> None:
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--min-chars", type=int, default=500)
+    parser.add_argument("--ocr", action="store_true", help="Run OCR on scanned/low-text PDF pages")
+    parser.add_argument("--ocr-language", default="eng+hin", help="Tesseract language code, e.g. eng, hin, eng+hin")
+    parser.add_argument("--ocr-dpi", type=int, default=200)
+    parser.add_argument("--ocr-min-page-chars", type=int, default=30)
+    parser.add_argument("--ocr-max-pages", type=int, default=None)
     args = parser.parse_args()
 
-    results = run(args.manifest, force=args.force, min_chars=args.min_chars)
+    results = run(
+        args.manifest,
+        force=args.force,
+        min_chars=args.min_chars,
+        ocr_enabled=args.ocr,
+        ocr_language=args.ocr_language,
+        ocr_dpi=args.ocr_dpi,
+        ocr_min_page_chars=args.ocr_min_page_chars,
+        ocr_max_pages=args.ocr_max_pages,
+    )
     if results["failed"]:
         raise SystemExit(1)
 

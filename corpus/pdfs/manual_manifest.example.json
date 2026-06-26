@@ -28,7 +28,9 @@
       "category": "state_scheme",
       "state": "maharashtra",
       "language": ["english", "marathi"],
-      "priority": "medium"
+      "priority": "medium",
+      "ocr_required": false,
+      "ocr_language": "eng+mar"
     }
   ]
 }

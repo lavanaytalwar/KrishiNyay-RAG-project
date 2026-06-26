@@ -83,15 +83,20 @@ PHASE_STATUS = [
     {
         "phase": "Phase 5",
         "title": "Retrieval quality upgrades",
-        "status": "in progress",
+        "status": "completed",
         "summary": "Hybrid MiniLM plus lexical retrieval, score fusion, and richer top-k validation metrics.",
+    },
+    {
+        "phase": "Phase 6",
+        "title": "OCR for scanned PDFs",
+        "status": "in progress",
+        "summary": "Optional Tesseract OCR path for scanned pages in manual official PDF ingestion.",
     },
 ]
 
 REMAINING_WORK = [
-    "Tune Phase 5 thresholds against the farmer-facing evaluation set.",
-    "Add stronger reranking and category/state/source-type filtering after hybrid retrieval baselines.",
-    "Add OCR for scanned PDFs such as forms with no extractable text.",
+    "Validate OCR on real scanned official PDFs when local Tesseract is installed.",
+    "Add stronger reranking and category/state/source-type filtering beyond the hybrid baseline.",
     "Replace live-source guidance with real mandi and weather API integrations.",
     "Add LangGraph workflows, voice/WhatsApp channels, and optional fine-tuning after enough validated data exists.",
 ]

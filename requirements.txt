@@ -9,6 +9,9 @@ beautifulsoup4
 lxml
 pdfplumber
 pypdf
+pypdfium2
+pytesseract
+Pillow
 pandas
 chromadb
 sentence-transformers
