@@ -3,8 +3,8 @@ KrishiNyay — rag_chain.py
 The full RAG chain: retrieve context → build prompt → generate answer.
 
 LLM STRATEGY:
-  Hosted demo : Gemini or OpenRouter via API key
   Local demo  : Ollama (Llama 3.1 8B running locally — free, private)
+  Hosted demo : Gemini or OpenRouter via API key
   Dev/fallback: Anthropic API (claude-haiku — fast, cheap, great Hindi)
   Offline test: Template answer (no LLM needed — proves retrieval works)
 
@@ -144,12 +144,33 @@ def _template_answer(question: str, results: list[dict]) -> str:
 def _choose_llm():
     """
     Pick the best available LLM backend:
-    1. Gemini API (recommended hosted demo)
-    2. OpenRouter API (hosted model router)
-    3. Ollama (local Llama 3.1)
+    1. Ollama (local Llama 3.1, preferred for private generation)
+    2. Gemini API (hosted demo)
+    3. OpenRouter API (hosted model router)
     4. Anthropic API (dev fallback)
     5. Template fallback (always works, no LLM needed)
     """
+    configured_ollama = os.environ.get("OLLAMA_MODEL", "llama3.1:8b")
+    try:
+        import requests
+        r = requests.get("http://localhost:11434/api/tags", timeout=2)
+        if r.status_code == 200:
+            models = [m["name"] for m in r.json().get("models", [])]
+            if configured_ollama in models:
+                log.info(f"✓ Using Ollama: {configured_ollama}")
+                return (
+                    f"ollama:{configured_ollama}",
+                    lambda prompt: _call_ollama(prompt, configured_ollama),
+                )
+            log.warning(
+                "Ollama is running, but required model '%s' is not installed. "
+                "Run: ollama pull %s",
+                configured_ollama,
+                configured_ollama,
+            )
+    except Exception:
+        pass
+
     if os.environ.get("GEMINI_API_KEY"):
         log.info("Using Gemini API")
         return "gemini", _call_gemini
@@ -157,20 +178,6 @@ def _choose_llm():
     if os.environ.get("OPENROUTER_API_KEY"):
         log.info("Using OpenRouter API")
         return "openrouter", _call_openrouter
-
-    # Try Ollama first
-    try:
-        import requests
-        r = requests.get("http://localhost:11434/api/tags", timeout=2)
-        if r.status_code == 200:
-            models = [m["name"] for m in r.json().get("models", [])]
-            configured = os.environ.get("OLLAMA_MODEL")
-            llama  = next((m for m in models if "llama" in m.lower()), None)
-            model  = configured or llama or "llama3.1:8b"
-            log.info(f"✓ Using Ollama: {model}")
-            return f"ollama:{model}", lambda prompt: _call_ollama(prompt, model)
-    except Exception:
-        pass
 
     # Try Anthropic
     if os.environ.get("ANTHROPIC_API_KEY"):
@@ -181,7 +188,7 @@ def _choose_llm():
     log.warning("No LLM backend found — using template fallback")
     log.warning("  For Gemini : export GEMINI_API_KEY=...")
     log.warning("  For OpenRouter: export OPENROUTER_API_KEY=...")
-    log.warning("  For Ollama : install ollama.com → ollama pull llama3.1:8b")
+    log.warning("  For Ollama : install ollama.com → ollama pull %s", configured_ollama)
     log.warning("  For Anthropic: export ANTHROPIC_API_KEY=sk-...")
     return "template", None
 

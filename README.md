@@ -20,9 +20,10 @@ Completed phases:
 - Phase 3 — FastAPI/frontend demo polish, CSS motion UI, better UX states, and deployment configuration.
 - Phase 4 — farmer-facing eval dataset with route, source-type, language, and topic coverage.
 - Phase 5 — hybrid MiniLM + lexical retrieval baseline with full eval regression gate.
+- Phase 6 — OCR for scanned PDFs in manual ingestion with real image-PDF OCR validation.
 
 What remains:
-- Phase 6 — OCR for scanned PDFs in manual ingestion.
+- Local generation checkpoint — validate synthesized answers from retrieved chunks with Ollama.
 - Later phases — live mandi/weather API integrations, LangGraph workflows, voice/WhatsApp channels, and optional fine-tuning only after enough validated data exists.
 
 Implemented:
@@ -39,11 +40,13 @@ Implemented:
 - Manifest-based manual PDF ingestion for curated official PDFs
 - Hybrid MiniLM + lexical retrieval with source-aware guardrails
 - Optional OCR hooks for scanned PDF pages in manual ingestion
+- Local Ollama generation path and validation gate for synthesized answers
 
 In progress:
-- Indic OCR language-pack validation on real Hindi/Marathi scanned official PDFs
+- Local Ollama generation validation on top of stable retrieval
 
 Planned:
+- Indic OCR language-pack validation on real Hindi/Marathi scanned official PDFs
 - Cross-encoder reranking
 - Voice input with Indic ASR/TTS
 - LangGraph agent workflows
@@ -257,18 +260,19 @@ uvicorn app:app --host 0.0.0.0 --port ${PORT:-7860}
 
 ## LLM Modes
 
-The project works without a paid LLM by returning a template answer from the top retrieved chunk. For richer generation, set one of:
+The project works without a paid LLM by returning a template answer from the top retrieved chunk. For real local answer generation, start Ollama and pull the default model:
+
+```bash
+ollama pull llama3.1:8b
+python validate_generation.py --provider ollama
+```
+
+The local model can be overridden with `OLLAMA_MODEL`. Hosted providers remain optional fallbacks:
 
 ```bash
 export GEMINI_API_KEY=...
 export OPENROUTER_API_KEY=...
 export ANTHROPIC_API_KEY=...
-```
-
-Or run Ollama locally:
-
-```bash
-ollama pull llama3.1:8b
 ```
 
 ## Sample Questions

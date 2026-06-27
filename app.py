@@ -95,6 +95,7 @@ PHASE_STATUS = [
 ]
 
 REMAINING_WORK = [
+    "Validate synthesized answers from retrieved chunks with local Ollama.",
     "Add Indic OCR language packs and validate on real Hindi/Marathi scanned official PDFs.",
     "Add stronger reranking and category/state/source-type filtering beyond the hybrid baseline.",
     "Replace live-source guidance with real mandi and weather API integrations.",
@@ -357,7 +358,7 @@ def health():
             "retrieval_mode": stats.get("retrieval_mode", "vector_only"),
             "lexical_chunks": stats.get("lexical_chunks", 0),
             "dynamic_router": "enabled",
-            "phase": "Phase 5",
+            "phase": "Phase 6",
             "demo_ready": True,
         }
     except Exception as exc:
