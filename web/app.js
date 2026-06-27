@@ -126,9 +126,17 @@ function renderRouteTrace(data) {
   const routeLabel = isDynamic ? "Dynamic Router" : "Static RAG";
   const reason = data.route_reason || data.normalized_question || "retrieval";
   const provider = data.llm_provider || "unknown";
+  const liveStatus = data.live_status
+    ? `<span class="sticky-badge badge-green">${escapeHtml(data.live_status)}</span>`
+    : "";
+  const dataProvider = data.data_provider
+    ? `<span class="sticky-badge badge-gray">${escapeHtml(data.data_provider)}</span>`
+    : "";
   routeTrace.innerHTML = `
     <span class="sticky-badge ${isDynamic ? "badge-pink" : "badge-yellow"}">${routeLabel}</span>
     <span class="sticky-badge badge-blue">${escapeHtml(provider)}</span>
+    ${liveStatus}
+    ${dataProvider}
     <p>${escapeHtml(reason)}</p>
   `;
 }
@@ -144,6 +152,7 @@ function renderStatus(health) {
 }
 
 function renderHealth(health) {
+  const liveData = health.live_data || {};
   const rows = [
     ["Status", health.status],
     ["Chunks", health.total_chunks],
@@ -154,6 +163,8 @@ function renderHealth(health) {
     ["LLM", health.llm_provider],
     ["Collection", health.collection],
     ["Router", health.dynamic_router],
+    ["Mandi API", liveData.mandi_api_configured ? "configured" : "needs key"],
+    ["Weather API", liveData.weather_provider || "unknown"],
     ["Phase", health.phase],
     ["Demo", health.demo_ready ? "ready" : "not ready"],
   ];

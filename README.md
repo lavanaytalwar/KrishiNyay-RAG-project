@@ -12,6 +12,7 @@ Current baseline:
 - Local indexed corpus: 1,748 chunks
 - Retrieval validation: 15/15 passing on the current RAG + dynamic routing smoke set
 - Farmer eval gate: 100 farmer-facing questions with Phase 5 hybrid retrieval validation
+- Live data: weather forecasts via Open-Meteo with IMD verification links; mandi prices via Data.gov.in Agmarknet when an API key is configured
 
 Completed phases:
 - Phase 0 — repo hygiene and truthful MiniLM baseline.
@@ -21,10 +22,10 @@ Completed phases:
 - Phase 4 — farmer-facing eval dataset with route, source-type, language, and topic coverage.
 - Phase 5 — hybrid MiniLM + lexical retrieval baseline with full eval regression gate.
 - Phase 6 — OCR for scanned PDFs in manual ingestion with real image-PDF OCR validation.
+- Phase 7 — live mandi/weather routing with API-backed responses and safe official-portal fallback.
 
 What remains:
-- Local generation checkpoint — validate synthesized answers from retrieved chunks with Ollama.
-- Later phases — live mandi/weather API integrations, LangGraph workflows, voice/WhatsApp channels, and optional fine-tuning only after enough validated data exists.
+- Later phases — LangGraph workflows, voice/WhatsApp channels, and optional fine-tuning only after enough validated data exists.
 
 Implemented:
 - Data ingestion scripts for government scheme pages and PDFs
@@ -41,16 +42,16 @@ Implemented:
 - Hybrid MiniLM + lexical retrieval with source-aware guardrails
 - Optional OCR hooks for scanned PDF pages in manual ingestion
 - Local Ollama generation path and validation gate for synthesized answers
+- Phase 7 live weather forecasts and optional Agmarknet mandi-price API lookup
 
 In progress:
-- Local Ollama generation validation on top of stable retrieval
+- Phase 8 planning after Phase 7 validation and commit cleanup
 
 Planned:
 - Indic OCR language-pack validation on real Hindi/Marathi scanned official PDFs
 - Cross-encoder reranking
 - Voice input with Indic ASR/TTS
 - LangGraph agent workflows
-- Live mandi/weather APIs
 - WhatsApp or IVR interface
 
 ## Architecture
@@ -83,8 +84,8 @@ Live-changing questions are routed away from static RAG:
 
 ```text
 PM-KISAN beneficiary/payment status → official PM-KISAN portal guidance
-mandi price / bhav questions       → eNAM live price guidance
-weather / spraying questions       → IMD/local advisory guidance
+mandi price / bhav questions       → Data.gov.in Agmarknet API when configured, otherwise eNAM/Agmarknet guidance
+weather / spraying questions       → live Open-Meteo forecast plus IMD/local advisory verification
 ```
 
 ## Repository Structure
@@ -275,6 +276,39 @@ export OPENROUTER_API_KEY=...
 export ANTHROPIC_API_KEY=...
 ```
 
+## Phase 7 Live Data
+
+The dynamic router now handles live-changing questions separately from static RAG:
+
+```text
+Mandi prices → Data.gov.in Agmarknet API when DATA_GOV_IN_API_KEY or AGMARKNET_API_KEY is set
+Weather      → Open-Meteo forecast API with IMD/Mausam as official verification source
+PM-KISAN     → official PM-KISAN portal guidance for beneficiary/payment status
+```
+
+Optional request fields for `/query`:
+
+```json
+{
+  "question": "Aaj soybean ka mandi bhav kya hai?",
+  "state": "Maharashtra",
+  "district": "Nashik",
+  "market": "Lasalgaon",
+  "commodity": "Soyabean",
+  "location": "Pune"
+}
+```
+
+Mandi setup:
+
+```bash
+export DATA_GOV_IN_API_KEY=...
+# optional override if Data.gov.in changes the resource id
+export AGMARKNET_RESOURCE_ID=9ef84268-d588-465a-a308-a864a43d0070
+```
+
+If the mandi API key is missing or the live API fails, the app does not invent prices. It returns `live_status`, `data_provider`, `fetched_at`, `live_data`, and official portal links so the UI can show that this was a safe dynamic fallback.
+
 ## Sample Questions
 
 ```text
@@ -296,6 +330,12 @@ python validate_corpus.py
 
 The validation script checks both static RAG retrieval and dynamic routing for live data questions.
 
+Run Phase 7 live-data unit validation:
+
+```bash
+python validate_phase7_live.py
+```
+
 Run RAGAS-style evaluation:
 
 ```bash
@@ -307,7 +347,7 @@ Outputs are written under `eval/`.
 ## Current Limitations
 
 - The local PMFBY PDF copy may be an HTML/error page saved with a `.pdf` extension; crop-insurance coverage should be repaired with a valid official document or sample source.
-- Live beneficiary status, payment status, mandi prices, and weather should not be answered from static RAG context; the app routes these to official/live sources where possible.
+- Live beneficiary status and payment status remain portal-guided because they are farmer-specific. Mandi prices require a Data.gov.in API key for live lookup; weather works without a key but should still be verified with IMD/local advisories before spraying.
 - OCR requires local system Tesseract plus Python OCR packages; core English OCR is validated, while Indic OCR requires extra Tesseract language data.
 - `data/` and `chroma_db/` are ignored intentionally, so reproducible demos should use `sample_data/` or re-run ingestion locally.
 

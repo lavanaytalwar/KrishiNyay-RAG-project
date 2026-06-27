@@ -10,6 +10,11 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from live_data import (
+    get_mandi_price_snapshot,
+    get_weather_forecast,
+    live_config_status,
+)
 from query_utils import canonical_for_routing
 from rag_chain import RAGChain
 
@@ -23,7 +28,7 @@ log = logging.getLogger("krishinyay.app")
 app = FastAPI(
     title="KrishiNyay AI",
     description="Source-grounded RAG assistant for Indian agriculture schemes.",
-    version="0.3.0",
+    version="0.4.0",
 )
 
 
@@ -31,6 +36,10 @@ class QueryRequest(BaseModel):
     question: str = Field(..., min_length=2, max_length=1000)
     category: Optional[str] = None
     state: Optional[str] = None
+    location: Optional[str] = None
+    commodity: Optional[str] = None
+    district: Optional[str] = None
+    market: Optional[str] = None
     n_results: int = Field(default=4, ge=1, le=8)
 
 
@@ -92,13 +101,17 @@ PHASE_STATUS = [
         "status": "completed",
         "summary": "Tesseract OCR path for scanned pages in manual official PDF ingestion, with image-PDF validation.",
     },
+    {
+        "phase": "Phase 7",
+        "title": "Live mandi and weather APIs",
+        "status": "completed",
+        "summary": "Dynamic router fetches weather forecasts and optionally Agmarknet mandi prices, with safe portal fallback.",
+    },
 ]
 
 REMAINING_WORK = [
-    "Validate synthesized answers from retrieved chunks with local Ollama.",
     "Add Indic OCR language packs and validate on real Hindi/Marathi scanned official PDFs.",
     "Add stronger reranking and category/state/source-type filtering beyond the hybrid baseline.",
-    "Replace live-source guidance with real mandi and weather API integrations.",
     "Add LangGraph workflows, voice/WhatsApp channels, and optional fine-tuning after enough validated data exists.",
 ]
 
@@ -183,7 +196,15 @@ def _matches_all(question: str, patterns: list[str]) -> bool:
     return all(re.search(pattern, question, flags=re.I) for pattern in patterns)
 
 
-def route_dynamic_query(question: str) -> Optional[dict]:
+def route_dynamic_query(
+    question: str,
+    *,
+    state: Optional[str] = None,
+    location: Optional[str] = None,
+    commodity: Optional[str] = None,
+    district: Optional[str] = None,
+    market: Optional[str] = None,
+) -> Optional[dict]:
     normalized = canonical_for_routing(question)
 
     if re.search(r"\b(pmfby|fasal bima|crop insurance)\b", normalized, flags=re.I):
@@ -239,53 +260,16 @@ def route_dynamic_query(question: str) -> Optional[dict]:
         }
 
     if _matches_all(normalized, DYNAMIC_PATTERNS["mandi_price"]):
-        return {
-            "mode": "dynamic_router",
-            "route": "dynamic_router",
-            "route_reason": "mandi_price_live_data",
-            "answer": (
-                "Mandi prices are live market data, so I should not answer from static "
-                "scheme documents. Please check the current commodity price on the "
-                "official eNAM portal: https://enam.gov.in/web/dashboard/live_price"
-            ),
-            "sources": [
-                {
-                    "display": "eNAM Live Price Dashboard",
-                    "url": "https://enam.gov.in/web/dashboard/live_price",
-                    "similarity": None,
-                    "category": "market_prices",
-                    "state": "india",
-                    "source": "official_portal",
-                    "doc_type": "Live Portal",
-                    "text": "Commodity prices should be fetched from a live market data source.",
-                }
-            ],
-        }
+        return get_mandi_price_snapshot(
+            question,
+            commodity=commodity,
+            state=state,
+            district=district,
+            market=market,
+        )
 
     if _matches_all(normalized, DYNAMIC_PATTERNS["weather"]):
-        return {
-            "mode": "dynamic_router",
-            "route": "dynamic_router",
-            "route_reason": "weather_live_data",
-            "answer": (
-                "Weather and spraying decisions depend on current local conditions, "
-                "so I should not answer from static documents. Please check an official "
-                "weather source such as IMD or your local agriculture advisory before "
-                "spraying or making crop-protection decisions."
-            ),
-            "sources": [
-                {
-                    "display": "India Meteorological Department",
-                    "url": "https://mausam.imd.gov.in/",
-                    "similarity": None,
-                    "category": "weather",
-                    "state": "india",
-                    "source": "official_portal",
-                    "doc_type": "Live Portal",
-                    "text": "Weather-sensitive farming decisions should use current local forecast data.",
-                }
-            ],
-        }
+        return get_weather_forecast(question, location=location, state=state)
 
     return None
 
@@ -347,6 +331,7 @@ def health():
     try:
         chain = get_chain(4)
         stats = chain.store.stats()
+        live_status = live_config_status()
         return {
             "status": "ok",
             "app": "KrishiNyay AI",
@@ -358,7 +343,8 @@ def health():
             "retrieval_mode": stats.get("retrieval_mode", "vector_only"),
             "lexical_chunks": stats.get("lexical_chunks", 0),
             "dynamic_router": "enabled",
-            "phase": "Phase 6",
+            "live_data": live_status,
+            "phase": "Phase 7",
             "demo_ready": True,
         }
     except Exception as exc:
@@ -382,9 +368,16 @@ def demo_config():
 
 @app.post("/query")
 def query(payload: QueryRequest):
-    dynamic = route_dynamic_query(payload.question)
+    dynamic = route_dynamic_query(
+        payload.question,
+        state=payload.state,
+        location=payload.location,
+        commodity=payload.commodity,
+        district=payload.district,
+        market=payload.market,
+    )
     if dynamic:
-        return {
+        response = {
             "question": payload.question,
             "answer": dynamic["answer"],
             "sources": enrich_sources(dynamic["sources"]),
@@ -394,6 +387,10 @@ def query(payload: QueryRequest):
             "n_chunks": 0,
             "llm_provider": "router",
         }
+        for key in ["live_status", "data_provider", "fetched_at", "live_data"]:
+            if key in dynamic:
+                response[key] = dynamic[key]
+        return response
 
     chain = get_chain(payload.n_results)
     response = chain.ask(
