@@ -15,7 +15,7 @@ Usage:
     print(answer)
 """
 
-import os, logging
+import os, logging, re, time
 from pathlib import Path
 from typing import Optional
 
@@ -28,6 +28,7 @@ log = logging.getLogger("krishinyay.rag_chain")
 SYSTEM_PROMPT = """You are KrishiNyay AI — a helpful assistant for Indian farmers.
 You answer questions about government schemes, crop management, legal rights, and financial inclusion.
 Always answer in the same language the user asked in (Hindi or English).
+If REQUIRED ANSWER LANGUAGE says English, answer in English only. Do not use Hindi or Devanagari except official scheme names.
 Base your answer ONLY on the provided context. If the context doesn't have enough information, say so clearly.
 Keep answers concise, practical, and easy for a farmer to understand.
 When mentioning amounts or deadlines, be specific."""
@@ -38,6 +39,7 @@ CONTEXT (retrieved from KrishiNyay knowledge base):
 {context}
 
 USER QUESTION: {question}
+REQUIRED ANSWER LANGUAGE: {answer_language}
 
 ANSWER:"""
 
@@ -51,6 +53,52 @@ def format_context(results: list[dict]) -> str:
             f"[Source {i}: {source_label}]\n{r['text']}"
         )
     return "\n\n---\n\n".join(parts)
+
+
+HINGLISH_MARKERS = {
+    "adhikar", "batao", "hai", "hain", "ka", "kab", "kaise", "kaun",
+    "ke", "khareedne", "kitna", "kiye", "liye", "milega", "meri",
+    "mera", "mujhe", "par", "sakta", "zameen",
+}
+
+ENGLISH_MARKERS = {
+    "after", "application", "can", "claim", "crop", "damage", "documents",
+    "does", "do", "eligible", "eligibility", "flood", "how", "insurance",
+    "land", "rights", "should", "what", "when", "where", "which", "who",
+    "why",
+}
+
+
+def _question_language_hint(question: str) -> str:
+    """Return an explicit language instruction for the answer prompt."""
+    if any("\u0900" <= char <= "\u097F" for char in question):
+        return "Hindi/Hinglish, matching the user's wording"
+
+    words = set(re.findall(r"[a-z]+", question.lower()))
+    if words & HINGLISH_MARKERS:
+        return "Hindi/Hinglish, matching the user's wording"
+    if words & ENGLISH_MARKERS:
+        return "English only"
+    return "same language as the user's question"
+
+
+def _requires_english_answer(question: str) -> bool:
+    return _question_language_hint(question) == "English only"
+
+
+def _answer_looks_english(answer: str) -> bool:
+    devanagari_chars = sum(1 for char in answer if "\u0900" <= char <= "\u097F")
+    return devanagari_chars <= max(4, len(answer) // 20)
+
+
+def _sanitize_llm_error(exc: Exception) -> str:
+    """Return a short, user-safe generation error message."""
+    message = str(exc).strip()
+    if not message:
+        return "The local model did not return a usable response."
+    if len(message) > 220:
+        message = message[:217].rstrip() + "..."
+    return message
 
 
 # ── LLM backends ───────────────────────────────────────────────────────────
@@ -115,13 +163,53 @@ def _call_openrouter(prompt: str) -> str:
 def _call_ollama(prompt: str, model: str = "llama3.1:8b") -> str:
     """Call local Ollama instance — free, runs on your machine."""
     import requests
-    resp = requests.post(
-        "http://localhost:11434/api/generate",
-        json={"model": model, "prompt": prompt, "stream": False},
-        timeout=60,
-    )
-    resp.raise_for_status()
-    return resp.json()["response"].strip()
+    timeout = int(os.environ.get("OLLAMA_TIMEOUT", "180"))
+    num_predict = int(os.environ.get("OLLAMA_NUM_PREDICT", "450"))
+    try:
+        resp = requests.post(
+            "http://localhost:11434/api/generate",
+            json={
+                "model": model,
+                "prompt": prompt,
+                "stream": False,
+                "keep_alive": "10m",
+                "options": {
+                    "temperature": 0.1,
+                    "num_predict": num_predict,
+                },
+            },
+            timeout=timeout,
+        )
+    except requests.Timeout as exc:
+        raise RuntimeError(
+            f"Ollama timed out after {timeout}s. The model may still be loading; retry the request."
+        ) from exc
+    except requests.ConnectionError as exc:
+        raise RuntimeError(
+            "Ollama is not reachable at http://localhost:11434. Start it with: brew services start ollama"
+        ) from exc
+    except requests.RequestException as exc:
+        raise RuntimeError(f"Ollama request failed: {exc}") from exc
+
+    if resp.status_code >= 400:
+        try:
+            detail = resp.json().get("error", resp.text)
+        except ValueError:
+            detail = resp.text
+        raise RuntimeError(f"Ollama HTTP {resp.status_code}: {detail[:180]}")
+
+    try:
+        payload = resp.json()
+    except ValueError as exc:
+        raise RuntimeError("Ollama returned invalid JSON.") from exc
+
+    if payload.get("error"):
+        raise RuntimeError(f"Ollama error: {payload['error']}")
+
+    answer = str(payload.get("response", "")).strip()
+    if not answer:
+        raise RuntimeError("Ollama returned an empty response.")
+    return answer
 
 
 def _template_answer(question: str, results: list[dict]) -> str:
@@ -233,21 +321,49 @@ class RAGChain:
         context = format_context(results)
 
         # 3. Build prompt
+        answer_language = _question_language_hint(question)
         prompt = RAG_PROMPT_TEMPLATE.format(
             system=SYSTEM_PROMPT,
             context=context,
             question=question,
+            answer_language=answer_language,
         )
 
         # 4. Generate answer
+        generation_status = "template_fallback"
+        generation_error = None
         if self.llm_fn:
             try:
                 answer = self.llm_fn(prompt)
-            except Exception as e:
-                log.warning(f"LLM call failed ({e}) — using template fallback")
-                answer = _template_answer(question, results)
+                generation_status = "generated"
+                if _requires_english_answer(question) and not _answer_looks_english(answer):
+                    retry_prompt = (
+                        f"{prompt}\n\n"
+                        "IMPORTANT: Answer in English only. Do not use Hindi or Devanagari. "
+                        "Give the final answer now in concise farmer-facing English."
+                    )
+                    answer = self.llm_fn(retry_prompt)
+                    generation_status = "generated_after_language_retry"
+            except Exception as exc:
+                if self.llm_provider.startswith("ollama:"):
+                    try:
+                        time.sleep(float(os.environ.get("OLLAMA_RETRY_DELAY", "1.5")))
+                        answer = self.llm_fn(prompt)
+                        generation_status = "generated_after_retry"
+                    except Exception as retry_exc:
+                        generation_error = _sanitize_llm_error(retry_exc)
+                        log.warning("LLM call failed after retry (%s) — using template fallback", generation_error)
+                        answer = _template_answer(question, results)
+                else:
+                    generation_error = _sanitize_llm_error(exc)
+                    log.warning("LLM call failed (%s) — using template fallback", generation_error)
+                    answer = _template_answer(question, results)
         else:
+            generation_error = "No LLM backend configured."
             answer = _template_answer(question, results)
+
+        if generation_status == "template_fallback" and not generation_error and self.llm_fn:
+            generation_error = "The configured model did not generate an answer."
 
         # 5. Return structured response
         return {
@@ -275,6 +391,8 @@ class RAGChain:
             "mode":     "rag",
             "route":    "rag",
             "llm_provider": self.llm_provider,
+            "generation_status": generation_status,
+            "generation_error": generation_error,
         }
 
     def ask_simple(self, question: str) -> str:
