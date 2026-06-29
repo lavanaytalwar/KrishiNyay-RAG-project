@@ -314,7 +314,14 @@ If the mandi API key is missing or the live API fails, the app does not invent p
 
 ## Phase 8 Workflow
 
-The `/query` endpoint now runs a lightweight workflow planner before static RAG. It keeps MiniLM + lexical retrieval for static questions and uses the live-data tools for weather, mandi, and PM-KISAN status questions.
+The `/query` endpoint now runs the workflow as a guarded graph:
+
+```text
+language detection → answer_language → intent + slots → allowed tool/retrieval
+→ evidence verification → LLM synthesis with answer_language → final answer
+```
+
+It keeps MiniLM + lexical retrieval for static questions and uses allowlisted live-data tools for weather, mandi, and PM-KISAN status questions. The workflow does not let the model freely browse arbitrary sites; it selects from trusted internal tools and official/live providers already wired into the app.
 
 Additional optional request fields:
 
@@ -327,13 +334,14 @@ Additional optional request fields:
       "intent": "weather",
       "question": "Kal baarish hogi kya, spraying karu?",
       "missing_fields": ["location"],
-      "filled_slots": {}
+      "filled_slots": {},
+      "answer_language": "hinglish"
     }
   }
 }
 ```
 
-Additional response metadata includes `intent`, `workflow_state`, `missing_fields`, `filled_slots`, `tool_used`, `answer_kind`, and `workflow_context`. This lets the frontend resume follow-ups such as `delhi` after a weather clarification or `soybean` after a mandi-price clarification.
+Additional response metadata includes `intent`, `workflow_state`, `missing_fields`, `filled_slots`, `tool_used`, `answer_kind`, `answer_language`, `evidence_verified`, `evidence_verifier`, and `workflow_context`. This lets the frontend resume follow-ups such as `delhi` after a weather clarification or `soybean` after a mandi-price clarification, while still switching language per turn: English turns get English answers, and Hindi/Hinglish turns get simple Roman Hindi/Hinglish answers.
 
 ## Sample Questions
 

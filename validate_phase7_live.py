@@ -108,7 +108,11 @@ def test_weather_mock_success() -> None:
 
     assert_true(result["live_status"] == "success", "mock weather fetch should succeed")
     assert_true("Pune" in result["answer"], "answer should include resolved location")
-    assert_true("Avoid spraying" in result["answer"], "rainy forecast should warn against spraying")
+    assert_true("Pune ka live forecast" in result["answer"], "Hinglish question should get Hinglish answer")
+    assert_true(
+        "Avoid spraying" in result["answer"] or "spraying avoid" in result["answer"].lower(),
+        "rainy forecast should warn against spraying",
+    )
     assert_true(result["live_data"]["location"] == "Pune", "location metadata should be returned")
 
 

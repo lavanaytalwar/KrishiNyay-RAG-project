@@ -1112,7 +1112,7 @@ textarea {
 
 .route-trace {
   display: grid;
-  gap: 10px;
+  gap: 14px;
   margin: 18px 18px 0;
   padding: 14px;
   border: 1px solid var(--line);
@@ -1120,11 +1120,88 @@ textarea {
   background: rgba(255, 255, 255, 0.7);
 }
 
+.trace-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
 .route-trace p {
   margin-bottom: 0;
   color: var(--muted);
   font-size: 0.9rem;
   line-height: 1.4;
+}
+
+.workflow-steps {
+  display: grid;
+  gap: 8px;
+}
+
+.workflow-step {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 253, 244, 0.78);
+}
+
+.workflow-step strong {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 0.84rem;
+}
+
+.workflow-step p {
+  font-size: 0.78rem;
+}
+
+.step-index {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--gray);
+  color: var(--ink);
+  font-size: 0.74rem;
+  font-weight: 900;
+}
+
+.workflow-step.step-done {
+  border-color: rgba(47, 125, 83, 0.26);
+  background: rgba(205, 235, 215, 0.3);
+}
+
+.workflow-step.step-done .step-index {
+  background: var(--green);
+  color: white;
+}
+
+.workflow-step.step-waiting {
+  border-color: rgba(255, 205, 71, 0.46);
+  background: rgba(255, 229, 138, 0.28);
+}
+
+.workflow-step.step-waiting .step-index {
+  background: var(--yellow);
+}
+
+.workflow-step.step-blocked {
+  border-color: rgba(255, 112, 146, 0.42);
+  background: rgba(255, 212, 223, 0.32);
+}
+
+.workflow-step.step-blocked .step-index {
+  background: var(--pink);
+}
+
+.workflow-step.step-idle {
+  opacity: 0.78;
 }
 
 .source-card {

@@ -19,6 +19,7 @@ import os, logging, re, time
 from pathlib import Path
 from typing import Optional
 
+from language_policy import detect_answer_language, prompt_language_instruction, requires_english_answer
 from query_utils import normalize_query
 
 log = logging.getLogger("krishinyay.rag_chain")
@@ -27,8 +28,9 @@ log = logging.getLogger("krishinyay.rag_chain")
 
 SYSTEM_PROMPT = """You are KrishiNyay AI — a helpful assistant for Indian farmers.
 You answer questions about government schemes, crop management, legal rights, and financial inclusion.
-Always answer in the same language the user asked in (Hindi or English).
+Always follow REQUIRED ANSWER LANGUAGE.
 If REQUIRED ANSWER LANGUAGE says English, answer in English only. Do not use Hindi or Devanagari except official scheme names.
+If REQUIRED ANSWER LANGUAGE says Hindi/Hinglish, answer in simple Roman Hindi/Hinglish, not formal English.
 Base your answer ONLY on the provided context. If the context doesn't have enough information, say so clearly.
 Keep answers concise, practical, and easy for a farmer to understand.
 When mentioning amounts or deadlines, be specific."""
@@ -43,6 +45,19 @@ REQUIRED ANSWER LANGUAGE: {answer_language}
 
 ANSWER:"""
 
+EVIDENCE_SYNTHESIS_PROMPT_TEMPLATE = """{system}
+
+VERIFIED EVIDENCE:
+{evidence}
+
+USER QUESTION: {question}
+REQUIRED ANSWER LANGUAGE: {answer_language}
+
+Write the final farmer-facing answer using only the verified evidence.
+Preserve official URLs exactly when they appear in the evidence.
+
+ANSWER:"""
+
 
 def format_context(results: list[dict]) -> str:
     """Format retrieved chunks into a clean context block."""
@@ -53,37 +68,6 @@ def format_context(results: list[dict]) -> str:
             f"[Source {i}: {source_label}]\n{r['text']}"
         )
     return "\n\n---\n\n".join(parts)
-
-
-HINGLISH_MARKERS = {
-    "adhikar", "batao", "hai", "hain", "ka", "kab", "kaise", "kaun",
-    "ke", "khareedne", "kitna", "kiye", "liye", "milega", "meri",
-    "mera", "mujhe", "par", "sakta", "zameen",
-}
-
-ENGLISH_MARKERS = {
-    "after", "application", "can", "claim", "crop", "damage", "documents",
-    "does", "do", "eligible", "eligibility", "flood", "how", "insurance",
-    "land", "rights", "should", "what", "when", "where", "which", "who",
-    "why",
-}
-
-
-def _question_language_hint(question: str) -> str:
-    """Return an explicit language instruction for the answer prompt."""
-    if any("\u0900" <= char <= "\u097F" for char in question):
-        return "Hindi/Hinglish, matching the user's wording"
-
-    words = set(re.findall(r"[a-z]+", question.lower()))
-    if words & HINGLISH_MARKERS:
-        return "Hindi/Hinglish, matching the user's wording"
-    if words & ENGLISH_MARKERS:
-        return "English only"
-    return "same language as the user's question"
-
-
-def _requires_english_answer(question: str) -> bool:
-    return _question_language_hint(question) == "English only"
 
 
 def _answer_looks_english(answer: str) -> bool:
@@ -296,6 +280,7 @@ class RAGChain:
         question: str,
         category: Optional[str] = None,
         state: Optional[str] = None,
+        answer_language: Optional[str] = None,
         verbose: bool = False,
     ) -> dict:
         """
@@ -321,12 +306,13 @@ class RAGChain:
         context = format_context(results)
 
         # 3. Build prompt
-        answer_language = _question_language_hint(question)
+        resolved_answer_language = detect_answer_language(question, fallback=answer_language)
+        answer_language_instruction = prompt_language_instruction(resolved_answer_language)
         prompt = RAG_PROMPT_TEMPLATE.format(
             system=SYSTEM_PROMPT,
             context=context,
             question=question,
-            answer_language=answer_language,
+            answer_language=answer_language_instruction,
         )
 
         # 4. Generate answer
@@ -336,7 +322,7 @@ class RAGChain:
             try:
                 answer = self.llm_fn(prompt)
                 generation_status = "generated"
-                if _requires_english_answer(question) and not _answer_looks_english(answer):
+                if requires_english_answer(resolved_answer_language) and not _answer_looks_english(answer):
                     retry_prompt = (
                         f"{prompt}\n\n"
                         "IMPORTANT: Answer in English only. Do not use Hindi or Devanagari. "
@@ -369,6 +355,7 @@ class RAGChain:
         return {
             "question": question,
             "normalized_question": normalized_question,
+            "answer_language": resolved_answer_language,
             "answer":   answer,
             "sources":  [
                 {
@@ -393,6 +380,53 @@ class RAGChain:
             "llm_provider": self.llm_provider,
             "generation_status": generation_status,
             "generation_error": generation_error,
+        }
+
+    def synthesize_from_evidence(
+        self,
+        *,
+        question: str,
+        evidence: str,
+        sources: list[dict],
+        answer_language: Optional[str] = None,
+    ) -> dict:
+        """Generate a final answer from already-verified tool evidence."""
+        resolved_answer_language = detect_answer_language(question, fallback=answer_language)
+        answer_language_instruction = prompt_language_instruction(resolved_answer_language)
+        prompt = EVIDENCE_SYNTHESIS_PROMPT_TEMPLATE.format(
+            system=SYSTEM_PROMPT,
+            evidence=evidence,
+            question=question,
+            answer_language=answer_language_instruction,
+        )
+
+        generation_status = "tool_answer_fallback"
+        generation_error = None
+        answer = evidence
+
+        if self.llm_fn:
+            try:
+                answer = self.llm_fn(prompt)
+                generation_status = "generated_from_verified_evidence"
+                if requires_english_answer(resolved_answer_language) and not _answer_looks_english(answer):
+                    retry_prompt = (
+                        f"{prompt}\n\n"
+                        "IMPORTANT: Answer in English only. Do not use Hindi or Devanagari. "
+                        "Give the final answer now in concise farmer-facing English."
+                    )
+                    answer = self.llm_fn(retry_prompt)
+                    generation_status = "generated_from_verified_evidence_after_language_retry"
+            except Exception as exc:
+                generation_error = _sanitize_llm_error(exc)
+                log.warning("Evidence synthesis failed (%s) — using verified tool answer", generation_error)
+
+        return {
+            "answer": answer,
+            "sources": sources,
+            "llm_provider": self.llm_provider,
+            "generation_status": generation_status,
+            "generation_error": generation_error,
+            "answer_language": resolved_answer_language,
         }
 
     def ask_simple(self, question: str) -> str:

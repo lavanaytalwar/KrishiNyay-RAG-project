@@ -15,6 +15,7 @@ from live_data import (
     get_weather_forecast,
     live_config_status,
 )
+from language_policy import detect_answer_language, is_hinglish_language, normalise_answer_language
 from query_utils import canonical_for_routing
 from rag_chain import RAGChain
 from workflow import plan_query_workflow
@@ -112,9 +113,9 @@ PHASE_STATUS = [
     },
     {
         "phase": "Phase 8",
-        "title": "Workflow state and follow-up handling",
+        "title": "Guarded workflow graph",
         "status": "completed",
-        "summary": "Intent planning, slot extraction, clarification prompts, and workflow context for multi-turn farmer questions.",
+        "summary": "Turn-level language policy, intent/slot planning, allowlisted tool routing, evidence verification, and LLM synthesis.",
     },
 ]
 
@@ -158,9 +159,9 @@ RECENT_CAPABILITIES = [
     },
     {
         "phase": "Phase 8",
-        "title": "Workflow planner",
-        "metric": "Intent + slots + follow-up state",
-        "summary": "Vague eligibility, weather, and mandi questions now ask for missing fields and resume when the farmer replies.",
+        "title": "Guarded workflow",
+        "metric": "Language → route → verify → synthesize",
+        "summary": "The workflow sets answer language per turn, routes to allowlisted tools, verifies evidence, then synthesizes the final answer.",
     },
 ]
 
@@ -373,23 +374,35 @@ def route_dynamic_query(
     commodity: Optional[str] = None,
     district: Optional[str] = None,
     market: Optional[str] = None,
+    answer_language: Optional[str] = None,
 ) -> Optional[dict]:
     normalized = canonical_for_routing(question)
+    resolved_answer_language = normalise_answer_language(answer_language) or detect_answer_language(question)
+    farmer_hindi = is_hinglish_language(resolved_answer_language)
 
     if re.search(r"\b(pmfby|fasal bima|crop insurance)\b", normalized, flags=re.I):
         return None
 
     if _matches_all(normalized, DYNAMIC_PATTERNS["pmkisan_status"]):
-        return {
-            "mode": "dynamic_router",
-            "route": "dynamic_router",
-            "route_reason": "pmkisan_live_status",
-            "answer": (
+        answer = (
+            "Yeh live, farmer-specific information hai, isliye main static documents se "
+            "status guess nahi karunga. Aadhaar, registration number, ya mobile details ke "
+            "saath official PM-KISAN Beneficiary Status page check karein: "
+            "https://pmkisan.gov.in/BeneficiaryStatus_New.aspx"
+            if farmer_hindi
+            else (
                 "This is live, farmer-specific information, so I should not answer it "
                 "from the static knowledge base. Please check the official PM-KISAN "
                 "Beneficiary Status page with your Aadhaar, registration number, or "
                 "mobile details: https://pmkisan.gov.in/BeneficiaryStatus_New.aspx"
-            ),
+            )
+        )
+        return {
+            "mode": "dynamic_router",
+            "route": "dynamic_router",
+            "route_reason": "pmkisan_live_status",
+            "answer": answer,
+            "answer_language": resolved_answer_language,
             "sources": [
                 {
                     "display": "PM-KISAN Beneficiary Status",
@@ -405,15 +418,23 @@ def route_dynamic_query(
         }
 
     if _matches_all(normalized, DYNAMIC_PATTERNS["installment"]):
+        answer = (
+            "Instalment dates aur payment status time ke saath change hote hain, isliye "
+            "main purane documents se guess nahi karunga. Current payment status ke liye "
+            "official PM-KISAN portal use karein aur Aadhaar/registration details ready rakhein."
+            if farmer_hindi
+            else (
+                "Instalment dates and payment status change over time, so I should not "
+                "guess from old documents. Use the official PM-KISAN portal for current "
+                "payment status and keep your Aadhaar or registration details ready."
+            )
+        )
         return {
             "mode": "dynamic_router",
             "route": "dynamic_router",
             "route_reason": "pmkisan_installment_live_status",
-            "answer": (
-                "Instalment dates and payment status change over time, so I should not "
-                "guess from old documents. Use the official PM-KISAN portal for current "
-                "payment status and keep your Aadhaar or registration details ready."
-            ),
+            "answer": answer,
+            "answer_language": resolved_answer_language,
             "sources": [
                 {
                     "display": "PM-KISAN Official Portal",
@@ -435,10 +456,16 @@ def route_dynamic_query(
             state=state,
             district=district,
             market=market,
+            answer_language=resolved_answer_language,
         )
 
     if _matches_all(normalized, DYNAMIC_PATTERNS["weather"]):
-        return get_weather_forecast(question, location=location, state=state)
+        return get_weather_forecast(
+            question,
+            location=location,
+            state=state,
+            answer_language=resolved_answer_language,
+        )
 
     return None
 
@@ -556,9 +583,47 @@ def workflow_metadata(
         "filled_slots": decision["filled_slots"],
         "tool_used": tool_used if tool_used is not None else decision["tool_used"],
         "answer_kind": answer_kind if answer_kind is not None else decision["answer_kind"],
+        "answer_language": decision["answer_language"],
         "workflow_context": decision["workflow_context"],
     }
     return metadata
+
+
+def verify_workflow_evidence(
+    *,
+    decision: dict[str, Any],
+    route: str,
+    sources: list[dict],
+    live_status: Optional[str] = None,
+) -> dict[str, Any]:
+    expected_category_by_intent = {
+        "weather": "weather",
+        "mandi_price": "market_prices",
+        "pmkisan_status": "live_status",
+    }
+    expected_category = expected_category_by_intent.get(decision["intent"])
+    route_match = route == decision["route"]
+    has_sources = bool(sources)
+    category_match = True
+    if expected_category:
+        category_match = any(source.get("category") == expected_category for source in sources)
+
+    passed = route_match and has_sources and category_match
+    if decision["action"] == "rag":
+        passed = route == "rag" and has_sources
+
+    status = "passed" if passed else "failed"
+    if live_status == "needs_more_input":
+        status = "needs_more_input"
+
+    return {
+        "status": status,
+        "route_match": route_match,
+        "has_sources": has_sources,
+        "expected_category": expected_category,
+        "category_match": category_match,
+        "live_status": live_status,
+    }
 
 
 @app.post("/query")
@@ -574,6 +639,14 @@ def query(payload: QueryRequest):
     )
 
     if decision["action"] == "clarification":
+        verifier = {
+            "status": "needs_more_input",
+            "route_match": True,
+            "has_sources": False,
+            "expected_category": None,
+            "category_match": True,
+            "live_status": None,
+        }
         return {
             "question": payload.question,
             "answer": decision["answer"],
@@ -583,6 +656,8 @@ def query(payload: QueryRequest):
             "route_reason": decision["route_reason"],
             "n_chunks": 0,
             "llm_provider": "workflow",
+            "evidence_verified": False,
+            "evidence_verifier": verifier,
             **workflow_metadata(decision, payload),
         }
 
@@ -610,18 +685,49 @@ def query(payload: QueryRequest):
             commodity=slots.get("commodity") or payload.commodity,
             district=slots.get("district") or payload.district,
             market=slots.get("market") or payload.market,
+            answer_language=decision["answer_language"],
         )
         if dynamic:
+            sources = enrich_sources(dynamic["sources"])
+            verifier = verify_workflow_evidence(
+                decision=decision,
+                route=dynamic["route"],
+                sources=sources,
+                live_status=dynamic.get("live_status"),
+            )
+            synthesis = {
+                "answer": dynamic["answer"],
+                "llm_provider": "router",
+                "generation_status": "router_direct",
+                "generation_error": None,
+            }
+            if verifier["status"] == "passed":
+                chain = get_chain(payload.n_results)
+                synthesis = chain.synthesize_from_evidence(
+                    question=payload.question,
+                    evidence=dynamic["answer"],
+                    sources=sources,
+                    answer_language=decision["answer_language"],
+                )
+            generation_status = synthesis.get("generation_status", "")
             response = {
                 "question": payload.question,
-                "answer": dynamic["answer"],
-                "sources": enrich_sources(dynamic["sources"]),
+                "answer": synthesis["answer"],
+                "sources": sources,
                 "mode": dynamic["mode"],
                 "route": dynamic["route"],
                 "route_reason": dynamic["route_reason"],
                 "n_chunks": 0,
-                "llm_provider": "router",
-                **workflow_metadata(decision, payload),
+                "llm_provider": synthesis.get("llm_provider", "router"),
+                "generation_status": generation_status,
+                "generation_error": synthesis.get("generation_error"),
+                "evidence_verified": verifier["status"] == "passed",
+                "evidence_verifier": verifier,
+                **workflow_metadata(
+                    decision,
+                    payload,
+                    answer_kind="generated" if generation_status.startswith("generated") else "router_direct",
+                ),
             }
             for key in ["live_status", "data_provider", "fetched_at", "live_data"]:
                 if key in dynamic:
@@ -645,9 +751,17 @@ def query(payload: QueryRequest):
         decision["question"],
         category=payload.category,
         state=decision["filled_slots"].get("state") or payload.state,
+        answer_language=decision["answer_language"],
     )
     response["sources"] = enrich_sources(response.get("sources", []))
+    verifier = verify_workflow_evidence(
+        decision=decision,
+        route=response.get("route", ""),
+        sources=response["sources"],
+    )
     generation_status = response.get("generation_status", "")
+    response["evidence_verified"] = verifier["status"] == "passed"
+    response["evidence_verifier"] = verifier
     response.update(
         workflow_metadata(
             decision,

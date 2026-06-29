@@ -21,6 +21,8 @@ from typing import Any, Optional
 
 import requests
 
+from language_policy import detect_answer_language, is_hinglish_language, normalise_answer_language
+
 
 AGMARKNET_RESOURCE_ID = os.environ.get(
     "AGMARKNET_RESOURCE_ID",
@@ -35,7 +37,6 @@ AGMARKNET_PORTAL_URL = "https://agmarknet.gov.in/"
 IMD_URL = "https://mausam.imd.gov.in/"
 OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 OPEN_METEO_GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search"
-
 
 COMMODITY_ALIASES = {
     "soybean": "Soyabean",
@@ -126,6 +127,15 @@ def _find_alias(text: str, aliases: dict[str, str]) -> Optional[str]:
     return None
 
 
+def _answer_language(question: str) -> str:
+    return detect_answer_language(question)
+
+
+def _is_farmer_hindi(question: str, answer_language: Optional[str] = None) -> bool:
+    resolved_language = normalise_answer_language(answer_language) or detect_answer_language(question)
+    return is_hinglish_language(resolved_language)
+
+
 def parse_commodity(question: str, explicit: Optional[str] = None) -> Optional[str]:
     if explicit:
         return explicit.strip()
@@ -203,32 +213,48 @@ def get_mandi_price_snapshot(
     state: Optional[str] = None,
     district: Optional[str] = None,
     market: Optional[str] = None,
+    answer_language: Optional[str] = None,
 ) -> dict[str, Any]:
     commodity_name = parse_commodity(question, commodity)
     state_name = parse_state(question, state)
     api_key = os.environ.get("DATA_GOV_IN_API_KEY") or os.environ.get("AGMARKNET_API_KEY")
+    farmer_hindi = _is_farmer_hindi(question, answer_language)
 
     if not commodity_name:
-        return _base_dynamic_response(
-            reason="mandi_price_live_data",
-            answer=(
+        answer = (
+            "Mandi bhav live hota hai. Kaunsi commodity ka bhav chahiye? "
+            "State/district/market bhi batayenge to current price lookup zyada useful hoga. "
+            f"Official eNAM dashboard: {ENAM_LIVE_PRICE_URL}"
+            if farmer_hindi
+            else (
                 "Mandi prices are live. Tell me the commodity name and, ideally, "
                 "state/district/market so I can look up the current price. You can also "
                 f"check the official eNAM dashboard: {ENAM_LIVE_PRICE_URL}"
-            ),
+            )
+        )
+        return _base_dynamic_response(
+            reason="mandi_price_live_data",
+            answer=answer,
             sources=_mandi_sources(),
             live_status="needs_more_input",
             provider="data.gov.in_agmarknet",
         )
 
     if not api_key:
-        return _base_dynamic_response(
-            reason="mandi_price_live_data",
-            answer=(
+        answer = (
+            f"{commodity_name} commodity detect ho gayi hai, lekin live mandi API access "
+            "is machine par not configured hai. DATA_GOV_IN_API_KEY ya AGMARKNET_API_KEY set karein, "
+            f"ya current bhav eNAM par verify karein: {ENAM_LIVE_PRICE_URL}"
+            if farmer_hindi
+            else (
                 f"I detected the commodity as {commodity_name}, but live mandi API access "
                 "is not configured on this machine. Set DATA_GOV_IN_API_KEY or "
                 f"AGMARKNET_API_KEY, or verify current prices on eNAM: {ENAM_LIVE_PRICE_URL}"
-            ),
+            )
+        )
+        return _base_dynamic_response(
+            reason="mandi_price_live_data",
+            answer=answer,
             sources=_mandi_sources("Agmarknet API key is required for live API price lookup."),
             live_status="unavailable_missing_api_key",
             provider="data.gov.in_agmarknet",
@@ -251,13 +277,19 @@ def get_mandi_price_snapshot(
     try:
         payload = _request_json(f"{AGMARKNET_API_BASE}/{AGMARKNET_RESOURCE_ID}", params)
     except Exception as exc:
-        return _base_dynamic_response(
-            reason="mandi_price_live_data",
-            answer=(
+        answer = (
+            f"Abhi {commodity_name} ka live mandi bhav fetch nahi ho paya "
+            f"({str(exc)[:120]}). Bechne se pehle eNAM par verify karein: {ENAM_LIVE_PRICE_URL}"
+            if farmer_hindi
+            else (
                 f"I could not fetch live {commodity_name} mandi prices right now "
                 f"({str(exc)[:120]}). Please verify on eNAM before making a sale decision: "
                 f"{ENAM_LIVE_PRICE_URL}"
-            ),
+            )
+        )
+        return _base_dynamic_response(
+            reason="mandi_price_live_data",
+            answer=answer,
             sources=_mandi_sources("Live Agmarknet request failed; fallback portal is provided."),
             live_status="unavailable_api_error",
             provider="data.gov.in_agmarknet",
@@ -267,12 +299,18 @@ def get_mandi_price_snapshot(
     records = [_normalise_record(record) for record in payload.get("records", [])]
     if not records:
         state_part = f" in {state_name}" if state_name else ""
-        return _base_dynamic_response(
-            reason="mandi_price_live_data",
-            answer=(
+        answer = (
+            f"{commodity_name}{state_part} ke liye fresh Agmarknet record nahi mila. "
+            f"Current bhav eNAM par verify karein: {ENAM_LIVE_PRICE_URL}"
+            if farmer_hindi
+            else (
                 f"I could not find a fresh Agmarknet record for {commodity_name}{state_part}. "
                 f"Please verify on eNAM: {ENAM_LIVE_PRICE_URL}"
-            ),
+            )
+        )
+        return _base_dynamic_response(
+            reason="mandi_price_live_data",
+            answer=answer,
             sources=_mandi_sources("Agmarknet returned no matching records."),
             live_status="unavailable_no_records",
             provider="data.gov.in_agmarknet",
@@ -288,11 +326,21 @@ def get_mandi_price_snapshot(
     min_price = _format_price(top.get("min_price"))
     max_price = _format_price(top.get("max_price"))
     answer = (
-        f"Latest available {commodity_name} price from Agmarknet: {market_name}"
-        f"{', ' + district_name if district_name else ''}"
-        f"{', ' + state_reported if state_reported else ''} reported modal price "
-        f"{modal_price}/quintal on {date}. Range: {min_price}–{max_price}/quintal. "
-        "Verify on the mandi/eNAM portal before selling because prices change during the day."
+        (
+            f"Agmarknet ke hisaab se {commodity_name} ka latest bhav: {market_name}"
+            f"{', ' + district_name if district_name else ''}"
+            f"{', ' + state_reported if state_reported else ''} mein modal price "
+            f"{modal_price}/quintal tha ({date}). Range: {min_price}–{max_price}/quintal. "
+            "Bechne se pehle mandi/eNAM par verify karein, kyunki bhav din bhar badal sakta hai."
+        )
+        if farmer_hindi
+        else (
+            f"Latest available {commodity_name} price from Agmarknet: {market_name}"
+            f"{', ' + district_name if district_name else ''}"
+            f"{', ' + state_reported if state_reported else ''} reported modal price "
+            f"{modal_price}/quintal on {date}. Range: {min_price}–{max_price}/quintal. "
+            "Verify on the mandi/eNAM portal before selling because prices change during the day."
+        )
     )
     return _base_dynamic_response(
         reason="mandi_price_live_data",
@@ -378,16 +426,25 @@ def get_weather_forecast(
     *,
     location: Optional[str] = None,
     state: Optional[str] = None,
+    answer_language: Optional[str] = None,
 ) -> dict[str, Any]:
     resolved = _location_from_text(question, location, state)
+    farmer_hindi = _is_farmer_hindi(question, answer_language)
     if not resolved:
-        return _base_dynamic_response(
-            reason="weather_live_data",
-            answer=(
+        answer = (
+            "Mujhe aapka village/city ya district chahiye. Location milte hi main "
+            "live weather forecast check karke bataunga ki spraying avoid karni chahiye "
+            f"ya safe hai. Official verification ke liye IMD/Mausam bhi dekhein: {IMD_URL}"
+            if farmer_hindi
+            else (
                 "Weather and spraying advice depends on your exact location. Tell me your "
                 "village/city or district, and verify official advisories on IMD/Mausam "
                 f"before spraying: {IMD_URL}"
-            ),
+            )
+        )
+        return _base_dynamic_response(
+            reason="weather_live_data",
+            answer=answer,
             sources=_weather_sources("A location is required before fetching a local forecast."),
             live_status="needs_more_input",
             provider="open_meteo_with_imd_verification",
@@ -407,13 +464,19 @@ def get_weather_forecast(
             },
         )
     except Exception as exc:
-        return _base_dynamic_response(
-            reason="weather_live_data",
-            answer=(
+        answer = (
+            f"{place} ka live forecast abhi fetch nahi ho paya ({str(exc)[:120]}). "
+            f"Spraying se pehle IMD/Mausam ya local agriculture advisory check karein: {IMD_URL}"
+            if farmer_hindi
+            else (
                 f"I could not fetch the live forecast for {place} right now "
                 f"({str(exc)[:120]}). Please check IMD/Mausam or your local agriculture "
                 f"advisory before spraying: {IMD_URL}"
-            ),
+            )
+        )
+        return _base_dynamic_response(
+            reason="weather_live_data",
+            answer=answer,
             sources=_weather_sources("Live weather request failed; official portal fallback is provided."),
             live_status="unavailable_api_error",
             provider="open_meteo_with_imd_verification",
@@ -434,19 +497,40 @@ def get_weather_forecast(
     current_rain = current.get("precipitation")
 
     spray_caution = (
-        "Avoid spraying until the rain risk drops and wind is calm."
+        (
+            "Abhi spraying avoid karein jab tak rain risk kam na ho aur hawa shaant na ho."
+            if farmer_hindi
+            else "Avoid spraying until the rain risk drops and wind is calm."
+        )
         if (tomorrow_probability or 0) >= 50 or (today_probability or 0) >= 50
-        else "Spraying may be possible, but confirm locally before applying chemicals."
+        else (
+            "Spraying possible lag rahi hai, lekin chemical apply karne se pehle local advisory confirm karein."
+            if farmer_hindi
+            else "Spraying may be possible, but confirm locally before applying chemicals."
+        )
     )
     answer = (
-        f"Live forecast for {place}: current temperature {temp if temp is not None else 'not reported'}°C, "
-        f"current rain {current_rain if current_rain is not None else 'not reported'} mm, "
-        f"wind {wind if wind is not None else 'not reported'} km/h. "
-        f"Rain chance: today {today_probability if today_probability is not None else 'not reported'}%, "
-        f"tomorrow {tomorrow_probability if tomorrow_probability is not None else 'not reported'}%. "
-        f"Expected rain: today {today_rain if today_rain is not None else 'not reported'} mm, "
-        f"tomorrow {tomorrow_rain if tomorrow_rain is not None else 'not reported'} mm. "
-        f"{spray_caution} Verify with IMD/local advisory before spraying."
+        (
+            f"{place} ka live forecast: abhi temperature {temp if temp is not None else 'reported nahi hai'}°C, "
+            f"rain {current_rain if current_rain is not None else 'reported nahi hai'} mm, "
+            f"wind {wind if wind is not None else 'reported nahi hai'} km/h. "
+            f"Rain chance: aaj {today_probability if today_probability is not None else 'reported nahi hai'}%, "
+            f"kal {tomorrow_probability if tomorrow_probability is not None else 'reported nahi hai'}%. "
+            f"Expected rain: aaj {today_rain if today_rain is not None else 'reported nahi hai'} mm, "
+            f"kal {tomorrow_rain if tomorrow_rain is not None else 'reported nahi hai'} mm. "
+            f"{spray_caution} Spraying se pehle IMD/local advisory verify karein."
+        )
+        if farmer_hindi
+        else (
+            f"Live forecast for {place}: current temperature {temp if temp is not None else 'not reported'}°C, "
+            f"current rain {current_rain if current_rain is not None else 'not reported'} mm, "
+            f"wind {wind if wind is not None else 'not reported'} km/h. "
+            f"Rain chance: today {today_probability if today_probability is not None else 'not reported'}%, "
+            f"tomorrow {tomorrow_probability if tomorrow_probability is not None else 'not reported'}%. "
+            f"Expected rain: today {today_rain if today_rain is not None else 'not reported'} mm, "
+            f"tomorrow {tomorrow_rain if tomorrow_rain is not None else 'not reported'} mm. "
+            f"{spray_caution} Verify with IMD/local advisory before spraying."
+        )
     )
     return _base_dynamic_response(
         reason="weather_live_data",

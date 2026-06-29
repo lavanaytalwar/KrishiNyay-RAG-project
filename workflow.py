@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 from typing import Any, Optional
 
+from language_policy import detect_answer_language, is_hinglish_language, normalise_answer_language
 from live_data import LOCATION_COORDS, STATE_CAPITAL_COORDS, parse_commodity, parse_state
 from query_utils import canonical_for_routing
 
@@ -116,6 +117,32 @@ def _is_short_follow_up(question: str) -> bool:
     return not _contains_any(canonical_for_routing(normalized), FOLLOW_UP_BLOCKED_TERMS)
 
 
+def _clean_follow_up_value(question: str) -> str:
+    value = question.strip().strip("?!., ")
+    value = re.sub(
+        r"^(what\s+about|how\s+about|and|also|aur|phir|fir)\s+",
+        "",
+        value,
+        flags=re.I,
+    )
+    value = re.sub(
+        r"\s+(kya|hai|hain|hoga|hogi|batao|please)$",
+        "",
+        value,
+        flags=re.I,
+    )
+    return value.strip("?!., ")
+
+
+def _is_context_follow_up(question: str) -> bool:
+    value = _clean_follow_up_value(question)
+    if not value:
+        return False
+    if len(value.split()) > 5:
+        return False
+    return not _contains_any(canonical_for_routing(value), FOLLOW_UP_BLOCKED_TERMS)
+
+
 def _extract_location(question: str, explicit: Optional[str], state: Optional[str]) -> Optional[str]:
     if explicit:
         return explicit.strip()
@@ -179,6 +206,7 @@ def _pending_context(
     question: str,
     missing_fields: list[str],
     slots: dict[str, str],
+    answer_language: str,
 ) -> dict[str, Any]:
     return {
         "pending": {
@@ -186,18 +214,85 @@ def _pending_context(
             "question": question,
             "missing_fields": missing_fields,
             "filled_slots": slots,
+            "answer_language": answer_language,
         },
         "last_intent": intent,
         "filled_slots": slots,
+        "answer_language": answer_language,
     }
 
 
-def _clear_context(intent: str, slots: dict[str, str]) -> dict[str, Any]:
+def _clear_context(intent: str, slots: dict[str, str], answer_language: str) -> dict[str, Any]:
     return {
         "pending": None,
         "last_intent": intent,
         "filled_slots": slots,
+        "answer_language": answer_language,
     }
+
+
+def _active_context(intent: str, question: str, slots: dict[str, str], answer_language: str) -> dict[str, Any]:
+    return {
+        "pending": None,
+        "active": {
+            "intent": intent,
+            "question": question,
+            "filled_slots": slots,
+            "answer_language": answer_language,
+        },
+        "last_intent": intent,
+        "filled_slots": slots,
+        "answer_language": answer_language,
+    }
+
+
+def _context_answer_language(workflow_context: Optional[dict[str, Any]]) -> Optional[str]:
+    if not workflow_context:
+        return None
+    pending = workflow_context.get("pending") or {}
+    active = workflow_context.get("active") or {}
+    return (
+        normalise_answer_language(workflow_context.get("answer_language"))
+        or normalise_answer_language(pending.get("answer_language"))
+        or normalise_answer_language(active.get("answer_language"))
+    )
+
+
+def _weather_clarification(answer_language: str) -> str:
+    if is_hinglish_language(answer_language):
+        return (
+            "Mujhe aapka village/city ya district chahiye. Location milte hi "
+            "main live weather forecast check karke bataunga ki spraying avoid "
+            "karni chahiye ya safe hai."
+        )
+    return (
+        "I need your village/city or district. Once I have the location, I can check "
+        "the live forecast and tell you whether spraying should be avoided or looks safe."
+    )
+
+
+def _mandi_clarification(answer_language: str) -> str:
+    if is_hinglish_language(answer_language):
+        return (
+            "Mandi bhav live hota hai. Kaunsi commodity ka bhav chahiye? "
+            "Agar state/district/market bhi batayenge to lookup zyada useful hoga."
+        )
+    return (
+        "Mandi prices are live. Which commodity price do you need? State, district, "
+        "or market will make the lookup more useful."
+    )
+
+
+def _eligibility_clarification(answer_language: str) -> str:
+    if is_hinglish_language(answer_language):
+        return (
+            "Eligibility kis scheme ke liye check karni hai? Scheme aur state bataiye, "
+            "jaise PM-KISAN, PMFBY, KCC, Maharashtra Namo Shetkari, ya koi aur rajya yojana."
+        )
+    return (
+        "Which scheme should I check eligibility for? Tell me the scheme and state, "
+        "for example PM-KISAN, PMFBY, KCC, Maharashtra Namo Shetkari, or another state scheme."
+    )
 
 
 def _decision(
@@ -212,9 +307,11 @@ def _decision(
     route_reason: str = "workflow_decision",
     tool_used: Optional[str] = None,
     answer_kind: str = "generated",
+    answer_language: Optional[str] = None,
     workflow_state: str = "complete",
     workflow_context: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
+    resolved_answer_language = normalise_answer_language(answer_language) or detect_answer_language(question)
     return {
         "action": action,
         "intent": intent,
@@ -226,24 +323,30 @@ def _decision(
         "route_reason": route_reason,
         "tool_used": tool_used,
         "answer_kind": answer_kind,
+        "answer_language": resolved_answer_language,
         "workflow_state": workflow_state,
-        "workflow_context": workflow_context if workflow_context is not None else _clear_context(intent, slots),
+        "workflow_context": (
+            workflow_context
+            if workflow_context is not None
+            else _clear_context(intent, slots, resolved_answer_language)
+        ),
     }
 
 
 def _resume_pending(
     question: str,
     workflow_context: Optional[dict[str, Any]],
+    answer_language: str,
 ) -> Optional[dict[str, Any]]:
     pending = (workflow_context or {}).get("pending")
-    if not pending or not _is_short_follow_up(question):
+    if not pending or not _is_context_follow_up(question):
         return None
 
     intent = pending.get("intent")
     original_question = pending.get("question") or question
     missing_fields = list(pending.get("missing_fields") or [])
     slots = dict(pending.get("filled_slots") or {})
-    value = question.strip()
+    value = _clean_follow_up_value(question)
 
     if intent == "weather" and "location" in missing_fields:
         slots["location"] = value
@@ -256,7 +359,9 @@ def _resume_pending(
             route_reason="weather_live_data",
             tool_used="weather",
             answer_kind="router_direct",
+            answer_language=answer_language,
             workflow_state="resumed",
+            workflow_context=_active_context("weather", original_question, slots, answer_language),
         )
 
     if intent == "mandi_price" and "commodity" in missing_fields:
@@ -271,7 +376,9 @@ def _resume_pending(
             route_reason="mandi_price_live_data",
             tool_used="mandi",
             answer_kind="router_direct",
+            answer_language=answer_language,
             workflow_state="resumed",
+            workflow_context=_active_context("mandi_price", original_question, slots, answer_language),
         )
 
     if intent == "eligibility" and "scheme_or_state" in missing_fields:
@@ -287,8 +394,61 @@ def _resume_pending(
                 route_reason="workflow_resumed_static_rag",
                 tool_used="rag",
                 answer_kind="generated",
+                answer_language=answer_language,
                 workflow_state="resumed",
             )
+
+    return None
+
+
+def _resume_active_context(
+    question: str,
+    workflow_context: Optional[dict[str, Any]],
+    answer_language: str,
+) -> Optional[dict[str, Any]]:
+    active = (workflow_context or {}).get("active")
+    if not active or not _is_context_follow_up(question):
+        return None
+
+    intent = active.get("intent")
+    prior_question = active.get("question") or question
+    slots = dict(active.get("filled_slots") or {})
+    value = _clean_follow_up_value(question)
+
+    if intent == "weather":
+        slots["location"] = value
+        return _decision(
+            action="dynamic",
+            intent="weather",
+            question=f"{value} weather forecast spraying advice",
+            slots=slots,
+            route="dynamic_router",
+            route_reason="weather_live_data",
+            tool_used="weather",
+            answer_kind="router_direct",
+            answer_language=answer_language,
+            workflow_state="resumed",
+            workflow_context=_active_context("weather", prior_question, slots, answer_language),
+        )
+
+    if intent == "mandi_price":
+        commodity_name = parse_commodity(value)
+        if not commodity_name:
+            return None
+        slots["commodity"] = commodity_name
+        return _decision(
+            action="dynamic",
+            intent="mandi_price",
+            question=f"{prior_question} {value} {commodity_name}",
+            slots=slots,
+            route="dynamic_router",
+            route_reason="mandi_price_live_data",
+            tool_used="mandi",
+            answer_kind="router_direct",
+            answer_language=answer_language,
+            workflow_state="resumed",
+            workflow_context=_active_context("mandi_price", prior_question, slots, answer_language),
+        )
 
     return None
 
@@ -303,9 +463,16 @@ def plan_query_workflow(
     district: Optional[str] = None,
     market: Optional[str] = None,
 ) -> dict[str, Any]:
-    resumed = _resume_pending(question, workflow_context)
+    context_answer_language = _context_answer_language(workflow_context)
+    turn_answer_language = detect_answer_language(question, fallback=context_answer_language)
+
+    resumed = _resume_pending(question, workflow_context, turn_answer_language)
     if resumed:
         return resumed
+
+    active_resumed = _resume_active_context(question, workflow_context, turn_answer_language)
+    if active_resumed:
+        return active_resumed
 
     slots = _extract_slots(
         question,
@@ -327,6 +494,7 @@ def plan_query_workflow(
             route_reason="system_model_info",
             tool_used="system_info",
             answer_kind="router_direct",
+            answer_language=turn_answer_language,
         )
 
     if intent == "weather":
@@ -338,21 +506,19 @@ def plan_query_workflow(
                 question=question,
                 slots=slots,
                 missing_fields=missing,
-                answer=(
-                    "Mujhe aapka village/city ya district chahiye. Location milte hi "
-                    "main live weather forecast check karke bataunga ki spraying avoid "
-                    "karni chahiye ya safe hai."
-                ),
+                answer=_weather_clarification(turn_answer_language),
                 route="workflow",
                 route_reason="weather_missing_location",
                 tool_used="weather",
                 answer_kind="clarification",
+                answer_language=turn_answer_language,
                 workflow_state="awaiting_input",
                 workflow_context=_pending_context(
                     intent=intent,
                     question=question,
                     missing_fields=missing,
                     slots=slots,
+                    answer_language=turn_answer_language,
                 ),
             )
         return _decision(
@@ -364,6 +530,8 @@ def plan_query_workflow(
             route_reason="weather_live_data",
             tool_used="weather",
             answer_kind="router_direct",
+            answer_language=turn_answer_language,
+            workflow_context=_active_context("weather", question, slots, turn_answer_language),
         )
 
     if intent == "mandi_price":
@@ -375,20 +543,19 @@ def plan_query_workflow(
                 question=question,
                 slots=slots,
                 missing_fields=missing,
-                answer=(
-                    "Mandi bhav live hota hai. Kaunsi commodity ka bhav chahiye? "
-                    "Agar state/district/market bhi batayenge to lookup zyada useful hoga."
-                ),
+                answer=_mandi_clarification(turn_answer_language),
                 route="workflow",
                 route_reason="mandi_missing_commodity",
                 tool_used="mandi",
                 answer_kind="clarification",
+                answer_language=turn_answer_language,
                 workflow_state="awaiting_input",
                 workflow_context=_pending_context(
                     intent=intent,
                     question=question,
                     missing_fields=missing,
                     slots=slots,
+                    answer_language=turn_answer_language,
                 ),
             )
         return _decision(
@@ -400,6 +567,8 @@ def plan_query_workflow(
             route_reason="mandi_price_live_data",
             tool_used="mandi",
             answer_kind="router_direct",
+            answer_language=turn_answer_language,
+            workflow_context=_active_context("mandi_price", question, slots, turn_answer_language),
         )
 
     if intent == "pmkisan_status":
@@ -412,6 +581,7 @@ def plan_query_workflow(
             route_reason="pmkisan_live_status",
             tool_used="pmkisan_portal",
             answer_kind="router_direct",
+            answer_language=turn_answer_language,
         )
 
     if intent == "eligibility":
@@ -422,19 +592,18 @@ def plan_query_workflow(
             question=question,
             slots=slots,
             missing_fields=missing,
-            answer=(
-                "Eligibility kis scheme ke liye check karni hai? Scheme aur state bataiye, "
-                "jaise PM-KISAN, PMFBY, KCC, Maharashtra Namo Shetkari, ya koi aur rajya yojana."
-            ),
+            answer=_eligibility_clarification(turn_answer_language),
             route="workflow",
             route_reason="eligibility_missing_scheme_or_state",
             answer_kind="clarification",
+            answer_language=turn_answer_language,
             workflow_state="awaiting_input",
             workflow_context=_pending_context(
                 intent=intent,
                 question=question,
                 missing_fields=missing,
                 slots=slots,
+                answer_language=turn_answer_language,
             ),
         )
 
@@ -447,4 +616,5 @@ def plan_query_workflow(
         route_reason="workflow_static_rag",
         tool_used="rag",
         answer_kind="generated",
+        answer_language=turn_answer_language,
     )

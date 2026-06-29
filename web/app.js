@@ -130,11 +130,71 @@ function renderSources(sources) {
     .join("");
 }
 
+function stepClass(status) {
+  if (status === "done") return "step-done";
+  if (status === "blocked") return "step-blocked";
+  if (status === "waiting") return "step-waiting";
+  return "step-idle";
+}
+
+function renderWorkflowStep(index, title, value, status = "done") {
+  return `
+    <article class="workflow-step ${stepClass(status)}">
+      <span class="step-index">${index}</span>
+      <div>
+        <strong>${escapeHtml(title)}</strong>
+        <p>${escapeHtml(value || "Not available yet")}</p>
+      </div>
+    </article>
+  `;
+}
+
+function workflowToolLabel(data) {
+  if (data.answer_kind === "clarification") return "Clarification prompt";
+  if (data.route === "rag") return "Hybrid RAG: MiniLM + lexical";
+  if (data.route === "dynamic_router") return `Allowed live tool: ${data.tool_used || "dynamic router"}`;
+  if (data.route === "system_info") return "System metadata tool";
+  return data.route || "Workflow";
+}
+
+function workflowEvidenceLabel(data) {
+  const verifier = data.evidence_verifier || {};
+  if (verifier.status) {
+    const expected = verifier.expected_category ? ` · expected ${verifier.expected_category}` : "";
+    return `${verifier.status}${expected}`;
+  }
+  if (data.sources?.length) return `${data.sources.length} source(s) returned`;
+  return "No evidence needed";
+}
+
+function workflowEvidenceStatus(data) {
+  if (data.evidence_verified) return "done";
+  if (data.evidence_verifier?.status === "needs_more_input") return "waiting";
+  if (data.evidence_verifier?.status === "failed") return "blocked";
+  return data.sources?.length ? "done" : "waiting";
+}
+
+function workflowAnswerLabel(data) {
+  if (data.answer_kind === "clarification") return "Asked for missing input";
+  if (data.generation_status) return data.generation_status;
+  if (data.route === "dynamic_router") return "Router answer";
+  return data.answer_kind || "Prepared answer";
+}
+
 function renderRouteTrace(data) {
   if (!data) {
     routeTrace.innerHTML = `
-      <span class="sticky-badge badge-gray">No query yet</span>
-      <p>Ask a question to see whether the backend used static RAG or the dynamic live-data router.</p>
+      <div class="trace-title">
+        <span class="sticky-badge badge-gray">No query yet</span>
+        <p>Ask a question to see the guarded workflow.</p>
+      </div>
+      <div class="workflow-steps">
+        ${renderWorkflowStep(1, "Language", "Detect English or Hinglish", "idle")}
+        ${renderWorkflowStep(2, "Planner", "Classify intent and slots", "idle")}
+        ${renderWorkflowStep(3, "Tool / Retrieval", "Use only allowed tools", "idle")}
+        ${renderWorkflowStep(4, "Verifier", "Check route, source type, relevance", "idle")}
+        ${renderWorkflowStep(5, "Answer", "Synthesize with selected language", "idle")}
+      </div>
     `;
     return;
   }
@@ -182,21 +242,42 @@ function renderRouteTrace(data) {
   const generationStatus = data.generation_status
     ? `<span class="sticky-badge badge-green">${escapeHtml(data.generation_status)}</span>`
     : "";
+  const answerLanguage = data.answer_language
+    ? `<span class="sticky-badge badge-blue">Lang: ${escapeHtml(data.answer_language)}</span>`
+    : "";
+  const evidenceStatus = data.evidence_verifier?.status
+    ? `<span class="sticky-badge ${data.evidence_verified ? "badge-green" : "badge-yellow"}">Evidence: ${escapeHtml(data.evidence_verifier.status)}</span>`
+    : "";
   const generatedAt = data.fetched_at
     ? `<span class="sticky-badge badge-blue">${escapeHtml(new Date(data.fetched_at).toLocaleString())}</span>`
     : "";
+  const languageLabel = data.answer_language === "hinglish"
+    ? "Hinglish / Roman Hindi"
+    : data.answer_language === "english"
+      ? "English"
+      : data.answer_language || "Unknown";
   routeTrace.innerHTML = `
-    <span class="sticky-badge ${routeBadgeClass}">${routeLabel}</span>
-    <span class="sticky-badge badge-blue">${escapeHtml(provider)}</span>
-    ${intent}
-    ${workflowState}
-    ${toolUsed}
-    ${answerKind}
-    ${liveStatus}
-    ${dataProvider}
-    ${generationStatus}
-    ${generatedAt}
-    <p>${escapeHtml(reason)}</p>
+    <div class="trace-title">
+      <span class="sticky-badge ${routeBadgeClass}">${routeLabel}</span>
+      <span class="sticky-badge badge-blue">${escapeHtml(provider)}</span>
+      ${intent}
+      ${workflowState}
+      ${toolUsed}
+      ${answerKind}
+      ${answerLanguage}
+      ${evidenceStatus}
+      ${liveStatus}
+      ${dataProvider}
+      ${generationStatus}
+      ${generatedAt}
+    </div>
+    <div class="workflow-steps">
+      ${renderWorkflowStep(1, "Language", languageLabel, data.answer_language ? "done" : "waiting")}
+      ${renderWorkflowStep(2, "Planner", `${data.intent || "unknown"} · ${reason}`, "done")}
+      ${renderWorkflowStep(3, "Tool / Retrieval", workflowToolLabel(data), data.answer_kind === "clarification" ? "waiting" : "done")}
+      ${renderWorkflowStep(4, "Verifier", workflowEvidenceLabel(data), workflowEvidenceStatus(data))}
+      ${renderWorkflowStep(5, "Answer", workflowAnswerLabel(data), data.answer_kind === "clarification" ? "waiting" : "done")}
+    </div>
   `;
 }
 
