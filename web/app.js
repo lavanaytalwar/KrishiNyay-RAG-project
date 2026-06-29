@@ -2,7 +2,8 @@ const state = {
   lastSources: [],
   health: null,
   demoConfig: null,
-  pendingFollowUp: null,
+  conversationId: `web-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+  workflowContext: null,
 };
 
 const pages = {
@@ -80,40 +81,16 @@ function badgeClass(index) {
   return ["badge-yellow", "badge-blue", "badge-green", "badge-pink", "badge-gray"][index % 5];
 }
 
-function isLikelyLocationFollowUp(question) {
-  const normalized = question.trim();
-  if (!normalized) return false;
-  if (/[?]/.test(normalized)) return false;
-  if (normalized.split(/\s+/).length > 5) return false;
-  const blockedTerms = /\b(weather|rain|baarish|barish|spray|spraying|mandi|bhav|price|pm[\s-]?kisan|pmfby|kcc|scheme)\b/i;
-  return !blockedTerms.test(normalized);
-}
-
 function buildQueryPayload(question) {
-  const pending = state.pendingFollowUp;
-  if (
-    pending?.routeReason === "weather_live_data" &&
-    pending?.liveStatus === "needs_more_input" &&
-    isLikelyLocationFollowUp(question)
-  ) {
-    return {
-      question: pending.question,
-      location: question.trim(),
-    };
-  }
-  return { question };
+  return {
+    question,
+    conversation_id: state.conversationId,
+    workflow_context: state.workflowContext,
+  };
 }
 
-function updatePendingFollowUp(question, data) {
-  if (data.route_reason === "weather_live_data" && data.live_status === "needs_more_input") {
-    state.pendingFollowUp = {
-      routeReason: data.route_reason,
-      liveStatus: data.live_status,
-      question,
-    };
-    return;
-  }
-  state.pendingFollowUp = null;
+function updateWorkflowContext(data) {
+  state.workflowContext = data.workflow_context || null;
 }
 
 function formatSimilarity(value) {
@@ -164,10 +141,38 @@ function renderRouteTrace(data) {
 
   const isDynamic = data.route === "dynamic_router";
   const isSystem = data.route === "system_info";
-  const routeLabel = isSystem ? "System Info" : isDynamic ? "Dynamic Router" : "Static RAG";
-  const routeBadgeClass = isSystem ? "badge-blue" : isDynamic ? "badge-pink" : "badge-yellow";
+  const isClarification = data.answer_kind === "clarification";
+  const isWorkflow = data.route === "workflow";
+  const routeLabel = isClarification
+    ? "Clarification Needed"
+    : isWorkflow
+      ? "Workflow"
+      : isSystem
+        ? "System Info"
+        : isDynamic
+          ? "Dynamic Router"
+          : "Static RAG";
+  const routeBadgeClass = isClarification || isWorkflow
+    ? "badge-blue"
+    : isSystem
+      ? "badge-blue"
+      : isDynamic
+        ? "badge-pink"
+        : "badge-yellow";
   const reason = data.route_reason || data.normalized_question || "retrieval";
   const provider = data.llm_provider || "unknown";
+  const intent = data.intent
+    ? `<span class="sticky-badge badge-gray">${escapeHtml(data.intent)}</span>`
+    : "";
+  const workflowState = data.workflow_state
+    ? `<span class="sticky-badge badge-blue">${escapeHtml(data.workflow_state)}</span>`
+    : "";
+  const toolUsed = data.tool_used
+    ? `<span class="sticky-badge badge-green">Tool: ${escapeHtml(data.tool_used)}</span>`
+    : "";
+  const answerKind = data.answer_kind
+    ? `<span class="sticky-badge badge-gray">${escapeHtml(data.answer_kind)}</span>`
+    : "";
   const liveStatus = data.live_status
     ? `<span class="sticky-badge badge-green">${escapeHtml(data.live_status)}</span>`
     : "";
@@ -183,6 +188,10 @@ function renderRouteTrace(data) {
   routeTrace.innerHTML = `
     <span class="sticky-badge ${routeBadgeClass}">${routeLabel}</span>
     <span class="sticky-badge badge-blue">${escapeHtml(provider)}</span>
+    ${intent}
+    ${workflowState}
+    ${toolUsed}
+    ${answerKind}
     ${liveStatus}
     ${dataProvider}
     ${generationStatus}
@@ -318,7 +327,7 @@ function renderDemoChecklist(config) {
   const mediaNote = config?.media_note || "";
   demoChecklist.innerHTML = `
     <div class="checklist-block">
-      <h3>Remaining roadmap after Phase 7</h3>
+      <h3>Remaining roadmap after Phase 8</h3>
       <ul>
         ${remaining.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
       </ul>
@@ -411,16 +420,38 @@ async function askQuestion(question) {
     loadingMessage.remove();
     const isSystem = data.route === "system_info";
     const isDynamic = data.route === "dynamic_router";
-    const responseBadge = isSystem ? "System Info" : isDynamic ? "Dynamic Router" : "RAG Answer";
-    const responseBadgeClass = isSystem ? "badge-blue" : isDynamic ? "badge-pink" : "badge-yellow";
+    const isClarification = data.answer_kind === "clarification";
+    const isWorkflow = data.route === "workflow";
+    const responseBadge = isClarification
+      ? "Clarification Needed"
+      : isWorkflow
+        ? "Workflow"
+        : isSystem
+          ? "System Info"
+          : isDynamic
+            ? "Dynamic Router"
+            : "RAG Answer";
+    const responseBadgeClass = isClarification || isWorkflow
+      ? "badge-blue"
+      : isSystem
+        ? "badge-blue"
+        : isDynamic
+          ? "badge-pink"
+          : "badge-yellow";
     addMessage("assistant", data.answer, {
       badge: responseBadge,
       badgeClass: responseBadgeClass,
     });
     renderSources(data.sources || []);
     renderRouteTrace(data);
-    updatePendingFollowUp(payload.question, data);
-    modeBadge.textContent = isSystem ? "System Info" : isDynamic ? "Dynamic Router" : "RAG";
+    updateWorkflowContext(data);
+    modeBadge.textContent = isClarification
+      ? "Clarification"
+      : isSystem
+        ? "System Info"
+        : isDynamic
+          ? "Dynamic Router"
+          : "RAG";
     modeBadge.className = `sticky-badge ${responseBadgeClass}`;
   } catch (error) {
     loadingMessage.remove();

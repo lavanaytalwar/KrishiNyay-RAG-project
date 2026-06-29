@@ -13,6 +13,7 @@ Current baseline:
 - Retrieval validation: 15/15 passing on the current RAG + dynamic routing smoke set
 - Farmer eval gate: 100 farmer-facing questions with Phase 5 hybrid retrieval validation
 - Live data: weather forecasts via Open-Meteo with IMD verification links; mandi prices via Data.gov.in Agmarknet when an API key is configured
+- Workflow layer: intent classification, slot extraction, clarification prompts, and follow-up state for weather, mandi, status, system, and static RAG paths
 
 Completed phases:
 - Phase 0 — repo hygiene and truthful MiniLM baseline.
@@ -23,9 +24,10 @@ Completed phases:
 - Phase 5 — hybrid MiniLM + lexical retrieval baseline with full eval regression gate.
 - Phase 6 — OCR for scanned PDFs in manual ingestion with real image-PDF OCR validation.
 - Phase 7 — live mandi/weather routing with API-backed responses and safe official-portal fallback.
+- Phase 8 — workflow state, missing-field clarification, and multi-turn follow-up handling.
 
 What remains:
-- Later phases — LangGraph workflows, voice/WhatsApp channels, and optional fine-tuning only after enough validated data exists.
+- Later phases — deeper LangGraph orchestration if needed, voice/WhatsApp channels, and optional fine-tuning only after enough validated data exists.
 
 Implemented:
 - Data ingestion scripts for government scheme pages and PDFs
@@ -43,15 +45,16 @@ Implemented:
 - Optional OCR hooks for scanned PDF pages in manual ingestion
 - Local Ollama generation path and validation gate for synthesized answers
 - Phase 7 live weather forecasts and optional Agmarknet mandi-price API lookup
+- Phase 8 workflow planning for intent, slots, clarification, and follow-up routing
 
 In progress:
-- Phase 8 planning after Phase 7 validation and commit cleanup
+- Phase 9 planning for voice/WhatsApp/mobile field UX
 
 Planned:
 - Indic OCR language-pack validation on real Hindi/Marathi scanned official PDFs
 - Cross-encoder reranking
 - Voice input with Indic ASR/TTS
-- LangGraph agent workflows
+- Durable LangGraph agent workflows if the internal workflow baseline needs deeper branching
 - WhatsApp or IVR interface
 
 ## Architecture
@@ -219,7 +222,7 @@ API endpoints:
 |---|---|
 | `GET /health` | Shows indexed chunks, collection, embedding backend, embedding dimension, and LLM provider |
 | `GET /demo-config` | Shows completed phases, remaining work, demo questions, and motion UI slots |
-| `POST /query` | Answers a question using dynamic routing or RAG, with `route` and source metadata |
+| `POST /query` | Answers a question using workflow routing, dynamic tools, or RAG, with route/source/workflow metadata |
 | `POST /ingest` | Adds a text document to the live vector store |
 
 ## Frontend Motion UI
@@ -309,6 +312,29 @@ export AGMARKNET_RESOURCE_ID=9ef84268-d588-465a-a308-a864a43d0070
 
 If the mandi API key is missing or the live API fails, the app does not invent prices. It returns `live_status`, `data_provider`, `fetched_at`, `live_data`, and official portal links so the UI can show that this was a safe dynamic fallback.
 
+## Phase 8 Workflow
+
+The `/query` endpoint now runs a lightweight workflow planner before static RAG. It keeps MiniLM + lexical retrieval for static questions and uses the live-data tools for weather, mandi, and PM-KISAN status questions.
+
+Additional optional request fields:
+
+```json
+{
+  "question": "delhi",
+  "conversation_id": "web-demo-session",
+  "workflow_context": {
+    "pending": {
+      "intent": "weather",
+      "question": "Kal baarish hogi kya, spraying karu?",
+      "missing_fields": ["location"],
+      "filled_slots": {}
+    }
+  }
+}
+```
+
+Additional response metadata includes `intent`, `workflow_state`, `missing_fields`, `filled_slots`, `tool_used`, `answer_kind`, and `workflow_context`. This lets the frontend resume follow-ups such as `delhi` after a weather clarification or `soybean` after a mandi-price clarification.
+
 ## Sample Questions
 
 ```text
@@ -334,6 +360,12 @@ Run Phase 7 live-data unit validation:
 
 ```bash
 python validate_phase7_live.py
+```
+
+Run Phase 8 workflow validation:
+
+```bash
+python validate_phase8_workflows.py
 ```
 
 Run RAGAS-style evaluation:

@@ -3,7 +3,7 @@ import logging
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
@@ -17,6 +17,7 @@ from live_data import (
 )
 from query_utils import canonical_for_routing
 from rag_chain import RAGChain
+from workflow import plan_query_workflow
 
 
 ROOT = Path(__file__).resolve().parent
@@ -34,6 +35,8 @@ app = FastAPI(
 
 class QueryRequest(BaseModel):
     question: str = Field(..., min_length=2, max_length=1000)
+    conversation_id: Optional[str] = None
+    workflow_context: Optional[dict[str, Any]] = None
     category: Optional[str] = None
     state: Optional[str] = None
     location: Optional[str] = None
@@ -107,12 +110,19 @@ PHASE_STATUS = [
         "status": "completed",
         "summary": "Dynamic router fetches weather forecasts and optionally Agmarknet mandi prices, with safe portal fallback.",
     },
+    {
+        "phase": "Phase 8",
+        "title": "Workflow state and follow-up handling",
+        "status": "completed",
+        "summary": "Intent planning, slot extraction, clarification prompts, and workflow context for multi-turn farmer questions.",
+    },
 ]
 
 REMAINING_WORK = [
     "Add Indic OCR language packs and validate on real Hindi/Marathi scanned official PDFs.",
     "Add stronger reranking and category/state/source-type filtering beyond the hybrid baseline.",
-    "Add LangGraph workflows, voice/WhatsApp channels, and optional fine-tuning after enough validated data exists.",
+    "Replace the lightweight internal workflow with LangGraph if deeper branching or durable server-side sessions are needed.",
+    "Add voice/WhatsApp channels and optional fine-tuning after enough validated data exists.",
 ]
 
 RECENT_CAPABILITIES = [
@@ -146,6 +156,12 @@ RECENT_CAPABILITIES = [
         "metric": "Weather live / mandi key-gated",
         "summary": "Weather uses live forecasts; mandi prices use Agmarknet when configured and otherwise return safe official-portal fallback.",
     },
+    {
+        "phase": "Phase 8",
+        "title": "Workflow planner",
+        "metric": "Intent + slots + follow-up state",
+        "summary": "Vague eligibility, weather, and mandi questions now ask for missing fields and resume when the farmer replies.",
+    },
 ]
 
 VALIDATION_GATES = [
@@ -178,6 +194,11 @@ VALIDATION_GATES = [
         "name": "Live data",
         "command": "validate_phase7_live.py",
         "result": "Mandi/weather metadata and safe fallbacks passed",
+    },
+    {
+        "name": "Workflow gate",
+        "command": "validate_phase8_workflows.py",
+        "result": "Intent, slot filling, clarification, and follow-up routing passed",
     },
     {
         "name": "Corpus smoke",
@@ -494,7 +515,8 @@ def health():
             "lexical_chunks": stats.get("lexical_chunks", 0),
             "dynamic_router": "enabled",
             "live_data": live_status,
-            "phase": "Phase 7",
+            "phase": "Phase 8",
+            "workflow": "enabled",
             "demo_ready": True,
         }
     except Exception as exc:
@@ -519,52 +541,120 @@ def demo_config():
     }
 
 
+def workflow_metadata(
+    decision: dict[str, Any],
+    payload: QueryRequest,
+    *,
+    answer_kind: Optional[str] = None,
+    tool_used: Optional[str] = None,
+) -> dict[str, Any]:
+    metadata = {
+        "conversation_id": payload.conversation_id,
+        "intent": decision["intent"],
+        "workflow_state": decision["workflow_state"],
+        "missing_fields": decision["missing_fields"],
+        "filled_slots": decision["filled_slots"],
+        "tool_used": tool_used if tool_used is not None else decision["tool_used"],
+        "answer_kind": answer_kind if answer_kind is not None else decision["answer_kind"],
+        "workflow_context": decision["workflow_context"],
+    }
+    return metadata
+
+
 @app.post("/query")
 def query(payload: QueryRequest):
-    system_info = route_system_query(payload.question)
-    if system_info:
-        return {
-            "question": payload.question,
-            "answer": system_info["answer"],
-            "sources": enrich_sources(system_info["sources"]),
-            "mode": system_info["mode"],
-            "route": system_info["route"],
-            "route_reason": system_info["route_reason"],
-            "n_chunks": 0,
-            "llm_provider": system_info["llm_provider"],
-        }
-
-    dynamic = route_dynamic_query(
+    decision = plan_query_workflow(
         payload.question,
+        workflow_context=payload.workflow_context,
         state=payload.state,
         location=payload.location,
         commodity=payload.commodity,
         district=payload.district,
         market=payload.market,
     )
-    if dynamic:
-        response = {
+
+    if decision["action"] == "clarification":
+        return {
             "question": payload.question,
-            "answer": dynamic["answer"],
-            "sources": enrich_sources(dynamic["sources"]),
-            "mode": dynamic["mode"],
-            "route": dynamic["route"],
-            "route_reason": dynamic["route_reason"],
+            "answer": decision["answer"],
+            "sources": [],
+            "mode": "workflow",
+            "route": decision["route"],
+            "route_reason": decision["route_reason"],
             "n_chunks": 0,
-            "llm_provider": "router",
+            "llm_provider": "workflow",
+            **workflow_metadata(decision, payload),
         }
-        for key in ["live_status", "data_provider", "fetched_at", "live_data"]:
-            if key in dynamic:
-                response[key] = dynamic[key]
-        return response
+
+    if decision["action"] == "system_info":
+        system_info = route_system_query(decision["question"])
+        if system_info:
+            return {
+                "question": payload.question,
+                "answer": system_info["answer"],
+                "sources": enrich_sources(system_info["sources"]),
+                "mode": system_info["mode"],
+                "route": system_info["route"],
+                "route_reason": system_info["route_reason"],
+                "n_chunks": 0,
+                "llm_provider": system_info["llm_provider"],
+                **workflow_metadata(decision, payload),
+            }
+
+    if decision["action"] == "dynamic":
+        slots = decision["filled_slots"]
+        dynamic = route_dynamic_query(
+            decision["question"],
+            state=slots.get("state") or payload.state,
+            location=slots.get("location") or payload.location,
+            commodity=slots.get("commodity") or payload.commodity,
+            district=slots.get("district") or payload.district,
+            market=slots.get("market") or payload.market,
+        )
+        if dynamic:
+            response = {
+                "question": payload.question,
+                "answer": dynamic["answer"],
+                "sources": enrich_sources(dynamic["sources"]),
+                "mode": dynamic["mode"],
+                "route": dynamic["route"],
+                "route_reason": dynamic["route_reason"],
+                "n_chunks": 0,
+                "llm_provider": "router",
+                **workflow_metadata(decision, payload),
+            }
+            for key in ["live_status", "data_provider", "fetched_at", "live_data"]:
+                if key in dynamic:
+                    response[key] = dynamic[key]
+            return response
+
+        return {
+            "question": payload.question,
+            "answer": "I understood this as a live-data question, but I could not route it safely. Please add the missing commodity, location, or scheme details.",
+            "sources": [],
+            "mode": "workflow",
+            "route": "workflow",
+            "route_reason": "dynamic_route_unavailable",
+            "n_chunks": 0,
+            "llm_provider": "workflow",
+            **workflow_metadata(decision, payload, answer_kind="clarification"),
+        }
 
     chain = get_chain(payload.n_results)
     response = chain.ask(
-        payload.question,
+        decision["question"],
         category=payload.category,
-        state=payload.state,
+        state=decision["filled_slots"].get("state") or payload.state,
     )
     response["sources"] = enrich_sources(response.get("sources", []))
+    generation_status = response.get("generation_status", "")
+    response.update(
+        workflow_metadata(
+            decision,
+            payload,
+            answer_kind="generated" if generation_status.startswith("generated") else "template_fallback",
+        )
+    )
     return response
 
 
