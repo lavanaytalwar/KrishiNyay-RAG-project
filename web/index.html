@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>KrishiNyay AI</title>
-    <link rel="stylesheet" href="/assets/styles.css" />
+    <link rel="stylesheet" href="/assets/styles.css?v=phase7-followup" />
   </head>
   <body>
     <div class="app-shell">
@@ -29,8 +29,9 @@
 
         <div class="sidebar-card">
           <span class="sticky-badge badge-green">Grounded RAG</span>
-          <span class="sticky-badge badge-yellow">Hindi + English</span>
-          <span class="sticky-badge badge-blue">Live Router</span>
+          <span class="sticky-badge badge-yellow">100 Eval Qs</span>
+          <span class="sticky-badge badge-blue">Hybrid + OCR</span>
+          <span class="sticky-badge badge-pink">Live APIs</span>
         </div>
       </aside>
 
@@ -55,9 +56,9 @@
               </div>
               <h2 id="landingTitle">KrishiNyay AI explains schemes with citations instead of guesses.</h2>
               <p>
-                The app combines scraped government documents, ChromaDB retrieval,
-                hosted or local LLM generation, and a router that refuses to answer
-                changing status or market-price questions from stale documents.
+                The app now combines a 100-question farmer eval set, hybrid MiniLM
+                retrieval, OCR-ready PDF ingestion, local Ollama answer generation,
+                and live-data routing for weather and mandi-price questions.
               </p>
               <div class="landing-actions">
                 <a class="primary-link" href="#chat" data-route="chat">Open Chat</a>
@@ -97,6 +98,9 @@
               <div class="phase-grid" id="phaseGrid" aria-label="Completed project phases">
                 <div class="empty-state">Loading phase status...</div>
               </div>
+              <div class="recent-phase-grid" id="recentPhaseGrid" aria-label="Recent phase highlights">
+                <div class="empty-state">Loading recent Phase 4–7 highlights...</div>
+              </div>
             </div>
           </div>
 
@@ -112,7 +116,7 @@
               </div>
               <span class="sticky-badge badge-pink">Router</span>
               <h3>Dynamic questions are intercepted first.</h3>
-              <p>Status, instalment, and mandi-price questions go to official live sources instead of stale RAG chunks.</p>
+              <p>Status, instalment, mandi-price, and weather questions go to live-source flows instead of stale RAG chunks.</p>
             </article>
             <article class="explain-card">
               <div class="animation-slot" data-motion-slot="retrieval" data-animation="retrieval">
@@ -121,8 +125,8 @@
                 </div>
               </div>
               <span class="sticky-badge badge-blue">Retrieval</span>
-              <h3>Static scheme questions use ChromaDB.</h3>
-              <p>The backend retrieves document chunks, builds context, and returns source previews with similarity scores.</p>
+              <h3>Static scheme questions use hybrid retrieval.</h3>
+              <p>MiniLM semantic search stays primary while lexical scoring improves exact scheme/source matches.</p>
             </article>
             <article class="explain-card">
               <div class="animation-slot" data-motion-slot="sources" data-animation="sources">
@@ -131,8 +135,8 @@
                 </div>
               </div>
               <span class="sticky-badge badge-green">Citations</span>
-              <h3>Every answer shows its evidence.</h3>
-              <p>The chat page keeps the answer and the government document chunks visible side by side.</p>
+              <h3>Answers show evidence and status.</h3>
+              <p>The chat page shows source chunks, generation status, live-data status, and provider metadata.</p>
             </article>
           </div>
         </section>
@@ -223,6 +227,13 @@
                 <span class="sticky-badge badge-blue">Market</span>
                 Mandi live router
               </button>
+              <button class="test-card" data-question="Kal Pune mein baarish hogi kya, spraying karu?">
+                <span class="sticky-badge badge-green">Weather</span>
+                Live weather advisory
+              </button>
+            </div>
+            <div class="validation-grid" id="validationGrid" aria-label="Validation gates">
+              <div class="empty-state">Loading validation gates...</div>
             </div>
           </div>
         </section>
@@ -282,6 +293,9 @@
             <div class="health-grid" id="healthGrid">
               <div class="empty-state">Loading system state...</div>
             </div>
+            <div class="api-key-guide" id="apiKeyGuide">
+              <div class="empty-state">Loading API key setup guidance...</div>
+            </div>
             <div class="demo-checklist" id="demoChecklist">
               <div class="empty-state">Loading remaining work...</div>
             </div>
@@ -290,6 +304,6 @@
       </main>
     </div>
 
-    <script src="/assets/app.js"></script>
+    <script src="/assets/app.js?v=phase7-followup"></script>
   </body>
 </html>

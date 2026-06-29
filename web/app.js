@@ -2,6 +2,7 @@ const state = {
   lastSources: [],
   health: null,
   demoConfig: null,
+  pendingFollowUp: null,
 };
 
 const pages = {
@@ -34,7 +35,10 @@ const ingestForm = document.querySelector("#ingestForm");
 const ingestResult = document.querySelector("#ingestResult");
 const pageTitle = document.querySelector("#pageTitle");
 const phaseGrid = document.querySelector("#phaseGrid");
+const recentPhaseGrid = document.querySelector("#recentPhaseGrid");
 const routeTrace = document.querySelector("#routeTrace");
+const validationGrid = document.querySelector("#validationGrid");
+const apiKeyGuide = document.querySelector("#apiKeyGuide");
 const demoChecklist = document.querySelector("#demoChecklist");
 
 function escapeHtml(value) {
@@ -74,6 +78,42 @@ function addMessage(role, text, options = {}) {
 
 function badgeClass(index) {
   return ["badge-yellow", "badge-blue", "badge-green", "badge-pink", "badge-gray"][index % 5];
+}
+
+function isLikelyLocationFollowUp(question) {
+  const normalized = question.trim();
+  if (!normalized) return false;
+  if (/[?]/.test(normalized)) return false;
+  if (normalized.split(/\s+/).length > 5) return false;
+  const blockedTerms = /\b(weather|rain|baarish|barish|spray|spraying|mandi|bhav|price|pm[\s-]?kisan|pmfby|kcc|scheme)\b/i;
+  return !blockedTerms.test(normalized);
+}
+
+function buildQueryPayload(question) {
+  const pending = state.pendingFollowUp;
+  if (
+    pending?.routeReason === "weather_live_data" &&
+    pending?.liveStatus === "needs_more_input" &&
+    isLikelyLocationFollowUp(question)
+  ) {
+    return {
+      question: pending.question,
+      location: question.trim(),
+    };
+  }
+  return { question };
+}
+
+function updatePendingFollowUp(question, data) {
+  if (data.route_reason === "weather_live_data" && data.live_status === "needs_more_input") {
+    state.pendingFollowUp = {
+      routeReason: data.route_reason,
+      liveStatus: data.live_status,
+      question,
+    };
+    return;
+  }
+  state.pendingFollowUp = null;
 }
 
 function formatSimilarity(value) {
@@ -123,7 +163,9 @@ function renderRouteTrace(data) {
   }
 
   const isDynamic = data.route === "dynamic_router";
-  const routeLabel = isDynamic ? "Dynamic Router" : "Static RAG";
+  const isSystem = data.route === "system_info";
+  const routeLabel = isSystem ? "System Info" : isDynamic ? "Dynamic Router" : "Static RAG";
+  const routeBadgeClass = isSystem ? "badge-blue" : isDynamic ? "badge-pink" : "badge-yellow";
   const reason = data.route_reason || data.normalized_question || "retrieval";
   const provider = data.llm_provider || "unknown";
   const liveStatus = data.live_status
@@ -132,11 +174,19 @@ function renderRouteTrace(data) {
   const dataProvider = data.data_provider
     ? `<span class="sticky-badge badge-gray">${escapeHtml(data.data_provider)}</span>`
     : "";
+  const generationStatus = data.generation_status
+    ? `<span class="sticky-badge badge-green">${escapeHtml(data.generation_status)}</span>`
+    : "";
+  const generatedAt = data.fetched_at
+    ? `<span class="sticky-badge badge-blue">${escapeHtml(new Date(data.fetched_at).toLocaleString())}</span>`
+    : "";
   routeTrace.innerHTML = `
-    <span class="sticky-badge ${isDynamic ? "badge-pink" : "badge-yellow"}">${routeLabel}</span>
+    <span class="sticky-badge ${routeBadgeClass}">${routeLabel}</span>
     <span class="sticky-badge badge-blue">${escapeHtml(provider)}</span>
     ${liveStatus}
     ${dataProvider}
+    ${generationStatus}
+    ${generatedAt}
     <p>${escapeHtml(reason)}</p>
   `;
 }
@@ -200,12 +250,75 @@ function renderPhaseGrid(config) {
     .join("");
 }
 
+function renderRecentCapabilities(config) {
+  const capabilities = config?.recent_capabilities || [];
+  if (!capabilities.length) {
+    recentPhaseGrid.innerHTML = `<div class="empty-state">Recent phase highlights are unavailable.</div>`;
+    return;
+  }
+
+  recentPhaseGrid.innerHTML = capabilities
+    .map((item, index) => `
+      <article class="recent-phase-card">
+        <span class="sticky-badge ${badgeClass(index)}">${escapeHtml(item.phase)}</span>
+        <strong>${escapeHtml(item.title)}</strong>
+        <em>${escapeHtml(item.metric)}</em>
+        <p>${escapeHtml(item.summary)}</p>
+      </article>
+    `)
+    .join("");
+}
+
+function renderValidationGates(config) {
+  const gates = config?.validation_gates || [];
+  if (!gates.length) {
+    validationGrid.innerHTML = `<div class="empty-state">Validation gates are unavailable.</div>`;
+    return;
+  }
+
+  validationGrid.innerHTML = gates
+    .map((gate, index) => `
+      <article class="validation-card">
+        <span class="sticky-badge ${badgeClass(index)}">Passed</span>
+        <strong>${escapeHtml(gate.name)}</strong>
+        <code>${escapeHtml(gate.command)}</code>
+        <p>${escapeHtml(gate.result)}</p>
+      </article>
+    `)
+    .join("");
+}
+
+function renderApiKeyGuide(config, health = state.health) {
+  const guide = config?.api_key_guide || {};
+  const liveData = health?.live_data || {};
+  const isConfigured = Boolean(liveData.mandi_api_configured);
+  const steps = guide.steps || [];
+  apiKeyGuide.innerHTML = `
+    <div class="checklist-block api-guide-block">
+      <div class="guide-head">
+        <div>
+          <h3>${escapeHtml(guide.title || "API key setup")}</h3>
+          <p>${escapeHtml(guide.provider || "Live data provider")}</p>
+        </div>
+        <span class="sticky-badge ${isConfigured ? "badge-green" : "badge-yellow"}">
+          ${isConfigured ? "Mandi API configured" : "Mandi API needs key"}
+        </span>
+      </div>
+      <ol>
+        ${steps.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}
+      </ol>
+      <code>${escapeHtml(guide.env || "DATA_GOV_IN_API_KEY=your_key_here")}</code>
+      <p>${escapeHtml(guide.note || "")}</p>
+    </div>
+  `;
+}
+
 function renderDemoChecklist(config) {
   const remaining = config?.remaining_work || [];
   const mediaNote = config?.media_note || "";
   demoChecklist.innerHTML = `
     <div class="checklist-block">
-      <h3>What remains after Phase 3</h3>
+      <h3>Remaining roadmap after Phase 7</h3>
       <ul>
         ${remaining.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
       </ul>
@@ -245,11 +358,17 @@ async function fetchDemoConfig() {
     const config = await response.json();
     state.demoConfig = config;
     renderPhaseGrid(config);
+    renderRecentCapabilities(config);
+    renderValidationGates(config);
+    renderApiKeyGuide(config);
     renderDemoChecklist(config);
     renderDemoQuestions(config);
     annotateMotionSlots(config);
   } catch (error) {
     phaseGrid.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
+    recentPhaseGrid.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
+    validationGrid.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
+    apiKeyGuide.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
     demoChecklist.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
   }
 }
@@ -262,6 +381,7 @@ async function fetchHealth() {
     state.health = health;
     renderStatus(health);
     renderHealth(health);
+    renderApiKeyGuide(state.demoConfig, health);
   } catch (error) {
     statusStrip.innerHTML = `<span class="sticky-badge badge-pink">Backend unavailable</span>`;
     healthGrid.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
@@ -270,6 +390,7 @@ async function fetchHealth() {
 
 async function askQuestion(question) {
   addMessage("user", question);
+  const payload = buildQueryPayload(question);
   const loadingMessage = addMessage("assistant", "Retrieving trusted sources and checking live-data routing...", {
     loading: true,
     badge: "Working",
@@ -283,19 +404,24 @@ async function askQuestion(question) {
     const response = await fetch("/query", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question }),
+      body: JSON.stringify(payload),
     });
     if (!response.ok) throw new Error(await response.text());
     const data = await response.json();
     loadingMessage.remove();
+    const isSystem = data.route === "system_info";
+    const isDynamic = data.route === "dynamic_router";
+    const responseBadge = isSystem ? "System Info" : isDynamic ? "Dynamic Router" : "RAG Answer";
+    const responseBadgeClass = isSystem ? "badge-blue" : isDynamic ? "badge-pink" : "badge-yellow";
     addMessage("assistant", data.answer, {
-      badge: data.route === "dynamic_router" ? "Dynamic Router" : "RAG Answer",
-      badgeClass: data.route === "dynamic_router" ? "badge-pink" : "badge-yellow",
+      badge: responseBadge,
+      badgeClass: responseBadgeClass,
     });
     renderSources(data.sources || []);
     renderRouteTrace(data);
-    modeBadge.textContent = data.mode === "dynamic_router" ? "Dynamic Router" : "RAG";
-    modeBadge.className = `sticky-badge ${data.mode === "dynamic_router" ? "badge-pink" : "badge-yellow"}`;
+    updatePendingFollowUp(payload.question, data);
+    modeBadge.textContent = isSystem ? "System Info" : isDynamic ? "Dynamic Router" : "RAG";
+    modeBadge.className = `sticky-badge ${responseBadgeClass}`;
   } catch (error) {
     loadingMessage.remove();
     addMessage("assistant", `I could not answer that request. ${error.message}`);

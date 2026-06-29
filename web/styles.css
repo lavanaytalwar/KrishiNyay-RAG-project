@@ -257,6 +257,44 @@ h2 {
   line-height: 1.45;
 }
 
+.recent-phase-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.recent-phase-card {
+  min-height: 168px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: linear-gradient(180deg, #ffffff, rgba(205, 235, 215, 0.32));
+}
+
+.recent-phase-card strong,
+.recent-phase-card em {
+  display: block;
+}
+
+.recent-phase-card strong {
+  margin: 12px 0 6px;
+}
+
+.recent-phase-card em {
+  color: var(--green);
+  font-size: 0.88rem;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.recent-phase-card p {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.42;
+}
+
 .primary-link,
 .secondary-link {
   display: inline-flex;
@@ -1128,14 +1166,16 @@ textarea {
 }
 
 .metric-grid,
-.health-grid {
+.health-grid,
+.validation-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
   padding: 20px;
 }
 
-.demo-checklist {
+.demo-checklist,
+.api-key-guide {
   padding: 0 20px 20px;
 }
 
@@ -1157,6 +1197,25 @@ textarea {
   line-height: 1.55;
 }
 
+.checklist-block ol {
+  margin: 14px 0;
+  padding-left: 20px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.checklist-block code,
+.validation-card code {
+  display: block;
+  margin-top: 12px;
+  padding: 10px;
+  border-radius: 8px;
+  background: #f5f6ef;
+  color: var(--ink);
+  font-size: 0.84rem;
+  white-space: normal;
+}
+
 .checklist-block p {
   margin: 14px 0 0;
   color: var(--muted);
@@ -1164,7 +1223,8 @@ textarea {
 }
 
 .test-card,
-.health-card {
+.health-card,
+.validation-card {
   min-height: 132px;
   padding: 18px;
   border: 1px solid var(--line);
@@ -1181,6 +1241,34 @@ textarea {
 }
 
 .health-card span:last-child {
+  color: var(--muted);
+}
+
+.validation-card strong {
+  display: block;
+  margin-top: 12px;
+}
+
+.validation-card p {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.api-guide-block {
+  background: linear-gradient(120deg, #ffffff, rgba(255, 229, 138, 0.28));
+}
+
+.guide-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.guide-head p {
+  margin-bottom: 0;
   color: var(--muted);
 }
 
@@ -1475,8 +1563,10 @@ textarea {
   .explain-grid,
   .hero-widget-row,
   .phase-grid,
+  .recent-phase-grid,
   .metric-grid,
-  .health-grid {
+  .health-grid,
+  .validation-grid {
     grid-template-columns: 1fr;
   }
 

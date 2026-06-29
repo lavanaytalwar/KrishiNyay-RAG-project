@@ -115,6 +115,90 @@ REMAINING_WORK = [
     "Add LangGraph workflows, voice/WhatsApp channels, and optional fine-tuning after enough validated data exists.",
 ]
 
+RECENT_CAPABILITIES = [
+    {
+        "phase": "Phase 4",
+        "title": "Farmer eval set",
+        "metric": "100 questions",
+        "summary": "Hindi, Hinglish, English, and regional-romanized farmer questions validate routes, topics, language coverage, and source types.",
+    },
+    {
+        "phase": "Phase 5",
+        "title": "Hybrid retrieval",
+        "metric": "98% top-1 / 100% top-3",
+        "summary": "MiniLM remains primary while lexical boosts improve source selection without measured hybrid regressions.",
+    },
+    {
+        "phase": "Phase 6",
+        "title": "OCR ingestion",
+        "metric": "Tesseract path",
+        "summary": "Scanned official PDF pages can be rendered and OCR'd before entering the trusted manual ingestion pipeline.",
+    },
+    {
+        "phase": "Generation",
+        "title": "Local Ollama answers",
+        "metric": "llama3.1:8b",
+        "summary": "Retrieved chunks can now be synthesized locally, with explicit fallback metadata if local generation fails.",
+    },
+    {
+        "phase": "Phase 7",
+        "title": "Live data routing",
+        "metric": "Weather live / mandi key-gated",
+        "summary": "Weather uses live forecasts; mandi prices use Agmarknet when configured and otherwise return safe official-portal fallback.",
+    },
+]
+
+VALIDATION_GATES = [
+    {
+        "name": "Farmer eval dataset",
+        "command": "validate_farmer_eval.py",
+        "result": "100 items valid",
+    },
+    {
+        "name": "Farmer eval spot-check",
+        "command": "validate_farmer_eval.py --spot-check",
+        "result": "15 router/retriever checks passed",
+    },
+    {
+        "name": "Hybrid retrieval gate",
+        "command": "validate_phase5_retrieval.py",
+        "result": "98% static top-1, 100% static top-3, 0 regressions",
+    },
+    {
+        "name": "OCR pipeline",
+        "command": "validate_ocr_pipeline.py",
+        "result": "Image-PDF OCR path validated",
+    },
+    {
+        "name": "Local generation",
+        "command": "validate_generation.py --provider ollama",
+        "result": "3/3 Ollama generation cases passed",
+    },
+    {
+        "name": "Live data",
+        "command": "validate_phase7_live.py",
+        "result": "Mandi/weather metadata and safe fallbacks passed",
+    },
+    {
+        "name": "Corpus smoke",
+        "command": "validate_corpus.py",
+        "result": "15/15 checks passed",
+    },
+]
+
+API_KEY_GUIDE = {
+    "title": "Mandi API key setup",
+    "provider": "Data.gov.in / Open Government Data Platform India",
+    "steps": [
+        "Create or sign in to data.gov.in using Login/Register.",
+        "Open the user dashboard/profile and copy the API key.",
+        "Paste it into .env as DATA_GOV_IN_API_KEY or AGMARKNET_API_KEY.",
+        "Restart the FastAPI backend and confirm /health shows mandi_api_configured=true.",
+    ],
+    "env": "DATA_GOV_IN_API_KEY=your_key_here",
+    "note": "Weather does not need a key. PM-KISAN status remains a portal route because it is farmer-specific.",
+}
+
 DEMO_QUESTIONS = [
     {
         "label": "PM-KISAN amount",
@@ -192,8 +276,72 @@ DYNAMIC_PATTERNS = {
 }
 
 
+SYSTEM_INFO_PATTERNS = [
+    r"\b(which|what)\s+(model|llm)\s+(is this|are you using|are you)\b",
+    r"\b(model|llm)\s+(name|provider)\b",
+    r"\b(which|what)\s+ai\s+model\b",
+    r"\b(is this|are you using)\s+(ollama|llama|claude|gemini|openrouter)\b",
+    r"\bwhich\s+provider\b",
+]
+
+AGRICULTURE_MODEL_CONTEXT = [
+    "yield",
+    "pmfby",
+    "fasal",
+    "bima",
+    "crop",
+    "scheme",
+    "insurance",
+    "estimation",
+]
+
+
 def _matches_all(question: str, patterns: list[str]) -> bool:
     return all(re.search(pattern, question, flags=re.I) for pattern in patterns)
+
+
+def route_system_query(question: str) -> Optional[dict]:
+    normalized = canonical_for_routing(question)
+    if not any(re.search(pattern, normalized, flags=re.I) for pattern in SYSTEM_INFO_PATTERNS):
+        return None
+    if any(term in normalized for term in AGRICULTURE_MODEL_CONTEXT):
+        return None
+
+    chain = get_chain(4)
+    stats = chain.store.stats()
+    live_status = live_config_status()
+    retrieval_mode = stats.get("retrieval_mode", "vector_only")
+    embedding_backend = stats.get("embedding_backend", "unknown")
+    total_chunks = stats.get("total_chunks", "unknown")
+    mandi_status = "configured" if live_status.get("mandi_api_configured") else "not configured"
+
+    return {
+        "mode": "system_info",
+        "route": "system_info",
+        "route_reason": "system_model_info",
+        "answer": (
+            "This is KrishiNyay AI. Retrieval uses "
+            f"{embedding_backend} embeddings with {retrieval_mode} over {total_chunks} indexed chunks. "
+            f"Answer generation is currently configured as {chain.llm_provider}. "
+            "On this local setup, that should be Ollama with llama3.1:8b when Ollama is running. "
+            f"Weather uses {live_status.get('weather_provider', 'the configured weather provider')}; "
+            f"mandi prices use {live_status.get('mandi_provider', 'the configured mandi provider')} "
+            f"when the API key is {mandi_status}."
+        ),
+        "sources": [
+            {
+                "display": "KrishiNyay runtime configuration",
+                "url": "",
+                "similarity": None,
+                "category": "system",
+                "state": "local",
+                "source": "runtime_metadata",
+                "doc_type": "System Metadata",
+                "text": "Runtime metadata from the local FastAPI configuration, retrieval store, and live-data settings.",
+            }
+        ],
+        "llm_provider": chain.llm_provider,
+    }
 
 
 def route_dynamic_query(
@@ -280,6 +428,8 @@ def get_chain(n_results: int) -> RAGChain:
 
 
 def infer_doc_type(source: dict) -> str:
+    if source.get("doc_type") == "System Metadata":
+        return "System Metadata"
     text = " ".join(
         str(source.get(key, "")) for key in ["display", "source", "url", "category", "doc_type"]
     ).lower()
@@ -356,6 +506,9 @@ def demo_config():
     return {
         "app": "KrishiNyay AI",
         "phase_status": PHASE_STATUS,
+        "recent_capabilities": RECENT_CAPABILITIES,
+        "validation_gates": VALIDATION_GATES,
+        "api_key_guide": API_KEY_GUIDE,
         "remaining_work": REMAINING_WORK,
         "demo_questions": DEMO_QUESTIONS,
         "motion_slots": MOTION_SLOTS,
@@ -368,6 +521,19 @@ def demo_config():
 
 @app.post("/query")
 def query(payload: QueryRequest):
+    system_info = route_system_query(payload.question)
+    if system_info:
+        return {
+            "question": payload.question,
+            "answer": system_info["answer"],
+            "sources": enrich_sources(system_info["sources"]),
+            "mode": system_info["mode"],
+            "route": system_info["route"],
+            "route_reason": system_info["route_reason"],
+            "n_chunks": 0,
+            "llm_provider": system_info["llm_provider"],
+        }
+
     dynamic = route_dynamic_query(
         payload.question,
         state=payload.state,
