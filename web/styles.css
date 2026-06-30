@@ -1204,6 +1204,24 @@ textarea {
   opacity: 0.78;
 }
 
+.field-preview {
+  padding: 12px;
+  border: 1px dashed rgba(47, 125, 83, 0.42);
+  border-radius: 8px;
+  background: rgba(205, 235, 215, 0.26);
+}
+
+.field-preview strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.82rem;
+}
+
+.field-preview p {
+  color: var(--ink);
+  font-size: 0.82rem;
+}
+
 .source-card {
   padding: 16px;
   border: 1px solid var(--line);
@@ -1673,7 +1691,7 @@ textarea {
 @media (max-width: 720px) {
   .main,
   .sidebar {
-    padding: 18px;
+    padding: 12px;
   }
 
   .topbar,
@@ -1692,11 +1710,45 @@ textarea {
     min-height: auto;
   }
 
+  .panel-head,
+  .messages,
+  .composer,
+  .source-list {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
   .messages {
-    height: 420px;
+    height: min(58vh, 520px);
   }
 
   .message {
     max-width: 100%;
+  }
+
+  .avatar {
+    flex-basis: 34px;
+    width: 34px;
+    height: 34px;
+    font-size: 0.72rem;
+  }
+
+  .bubble {
+    padding: 12px;
+  }
+
+  .route-trace {
+    margin: 14px 14px 0;
+    padding: 12px;
+  }
+
+  .workflow-step {
+    grid-template-columns: 24px minmax(0, 1fr);
+    padding: 9px;
+  }
+
+  .step-index {
+    width: 24px;
+    height: 24px;
   }
 }

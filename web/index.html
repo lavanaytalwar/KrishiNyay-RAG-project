@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>KrishiNyay AI</title>
-    <link rel="stylesheet" href="/assets/styles.css?v=phase8-guarded-workflow" />
+    <link rel="stylesheet" href="/assets/styles.css?v=phase12-hardening" />
   </head>
   <body>
     <div class="app-shell">
@@ -51,14 +51,14 @@
             <div class="landing-copy">
               <div class="hero-badges">
                 <span class="sticky-badge badge-green">Guarded Workflow</span>
-                <span class="sticky-badge badge-yellow">Language Aware</span>
+                <span class="sticky-badge badge-yellow">250 Eval Checks</span>
                 <span class="sticky-badge badge-blue">Government Sources</span>
               </div>
               <h2 id="landingTitle">KrishiNyay AI explains schemes with citations instead of guesses.</h2>
               <p>
-                The app now combines a 100-question farmer eval set, hybrid MiniLM
+                The app now combines a 250-question farmer eval set, hybrid MiniLM
                 retrieval, OCR-ready PDF ingestion, local Ollama answer generation,
-                and live-data routing for weather and mandi-price questions.
+                live-data routing, answer-quality gates, and production-readiness checks.
               </p>
               <div class="landing-actions">
                 <a class="primary-link" href="#chat" data-route="chat">Open Chat</a>
@@ -147,7 +147,7 @@
               <div class="panel-head">
                 <div>
                   <h2 id="chatTitle">Farmer Chat</h2>
-                  <p>Ask in Hindi, Hinglish, or English.</p>
+                <p>Ask in Hindi, Hinglish, or English. The trace shows language, route, verifier, and field preview.</p>
                 </div>
                 <span class="sticky-badge badge-yellow" id="modeBadge">Ready</span>
               </div>
@@ -178,7 +178,7 @@
               <div class="panel-head">
                 <div>
                   <h2>Retrieved Sources</h2>
-                  <p>Chunks used for the latest answer.</p>
+                  <p>Chunks, live evidence, verifier state, and field-ready preview for the latest answer.</p>
                 </div>
                 <span class="sticky-badge badge-blue" id="sourceCount">0 chunks</span>
               </div>
@@ -304,6 +304,6 @@
       </main>
     </div>
 
-    <script src="/assets/app.js?v=phase8-guarded-workflow"></script>
+    <script src="/assets/app.js?v=phase12-hardening"></script>
   </body>
 </html>

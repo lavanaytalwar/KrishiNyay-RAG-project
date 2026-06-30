@@ -181,6 +181,23 @@ function workflowAnswerLabel(data) {
   return data.answer_kind || "Prepared answer";
 }
 
+function fieldPreview(data) {
+  if (!data?.answer || data.answer_kind === "clarification") return "";
+  const answer = String(data.answer).replace(/\s+/g, " ").trim();
+  const shortAnswer = answer.length > 420 ? `${answer.slice(0, 417).trim()}...` : answer;
+  const sourceNames = (data.sources || [])
+    .slice(0, 2)
+    .map((source) => source.display || source.source || source.doc_type)
+    .filter(Boolean);
+  const sourceText = sourceNames.length ? ` Sources: ${sourceNames.join("; ")}` : "";
+  return `
+    <div class="field-preview">
+      <strong>Field / WhatsApp preview</strong>
+      <p>${escapeHtml(shortAnswer + sourceText)}</p>
+    </div>
+  `;
+}
+
 function renderRouteTrace(data) {
   if (!data) {
     routeTrace.innerHTML = `
@@ -278,6 +295,7 @@ function renderRouteTrace(data) {
       ${renderWorkflowStep(4, "Verifier", workflowEvidenceLabel(data), workflowEvidenceStatus(data))}
       ${renderWorkflowStep(5, "Answer", workflowAnswerLabel(data), data.answer_kind === "clarification" ? "waiting" : "done")}
     </div>
+    ${fieldPreview(data)}
   `;
 }
 
@@ -293,6 +311,7 @@ function renderStatus(health) {
 
 function renderHealth(health) {
   const liveData = health.live_data || {};
+  const readiness = health.readiness || {};
   const rows = [
     ["Status", health.status],
     ["Chunks", health.total_chunks],
@@ -306,6 +325,9 @@ function renderHealth(health) {
     ["Mandi API", liveData.mandi_api_configured ? "configured" : "needs key"],
     ["Weather API", liveData.weather_provider || "unknown"],
     ["Phase", health.phase],
+    ["OCR", readiness.ocr_ready ? readiness.ocr_engine || "ready" : "needs setup"],
+    ["Indic OCR", readiness.indic_ocr_ready ? "ready" : "needs language packs"],
+    ["Fine-tuning", health.fine_tuning || "not required"],
     ["Demo", health.demo_ready ? "ready" : "not ready"],
   ];
 
@@ -408,7 +430,7 @@ function renderDemoChecklist(config) {
   const mediaNote = config?.media_note || "";
   demoChecklist.innerHTML = `
     <div class="checklist-block">
-      <h3>Remaining roadmap after Phase 8</h3>
+      <h3>Hardening focus after Phase 12 baseline</h3>
       <ul>
         ${remaining.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
       </ul>
@@ -481,7 +503,7 @@ async function fetchHealth() {
 async function askQuestion(question) {
   addMessage("user", question);
   const payload = buildQueryPayload(question);
-  const loadingMessage = addMessage("assistant", "Retrieving trusted sources and checking live-data routing...", {
+  const loadingMessage = addMessage("assistant", "Planning route, verifying evidence, and preparing a grounded answer...", {
     loading: true,
     badge: "Working",
     badgeClass: "badge-blue",
