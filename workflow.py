@@ -339,10 +339,17 @@ def _resume_pending(
     answer_language: str,
 ) -> Optional[dict[str, Any]]:
     pending = (workflow_context or {}).get("pending")
-    if not pending or not _is_context_follow_up(question):
+    if not pending:
         return None
 
     intent = pending.get("intent")
+    if intent == "eligibility":
+        value = _clean_follow_up_value(question)
+        if not value or len(value.split()) > 7:
+            return None
+    elif not _is_context_follow_up(question):
+        return None
+
     original_question = pending.get("question") or question
     missing_fields = list(pending.get("missing_fields") or [])
     slots = dict(pending.get("filled_slots") or {})

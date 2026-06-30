@@ -128,7 +128,7 @@ def detect_answer_language(question: str, fallback: Optional[str] = None) -> str
     if words & ENGLISH_MARKERS:
         return ANSWER_LANGUAGE_ENGLISH
     if words & CONTEXTUAL_HINGLISH_MARKERS:
-        return ANSWER_LANGUAGE_HINGLISH
+        return normalized_fallback or ANSWER_LANGUAGE_HINGLISH
     return normalized_fallback or ANSWER_LANGUAGE_ENGLISH
 
 

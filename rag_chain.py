@@ -33,7 +33,10 @@ If REQUIRED ANSWER LANGUAGE says English, answer in English only. Do not use Hin
 If REQUIRED ANSWER LANGUAGE says Hindi/Hinglish, answer in simple Roman Hindi/Hinglish, not formal English.
 Base your answer ONLY on the provided context. If the context doesn't have enough information, say so clearly.
 Keep answers concise, practical, and easy for a farmer to understand.
-When mentioning amounts or deadlines, be specific."""
+When mentioning amounts or deadlines, be specific.
+Do not invent eligibility, prices, weather, status, or application outcomes.
+Prefer 2-5 short bullets or short paragraphs.
+If the question needs live farmer-specific data, say it must be checked on the official/live source."""
 
 RAG_PROMPT_TEMPLATE = """{system}
 
@@ -55,6 +58,7 @@ REQUIRED ANSWER LANGUAGE: {answer_language}
 
 Write the final farmer-facing answer using only the verified evidence.
 Preserve official URLs exactly when they appear in the evidence.
+Do not add new facts beyond the verified evidence.
 
 ANSWER:"""
 

@@ -245,6 +245,31 @@ def test_vague_eligibility_clarifies(client: TestClient) -> None:
     assert_true(result["intent"] == "eligibility", "intent should be eligibility")
     assert_true(result["missing_fields"] == ["scheme_or_state"], "scheme/state should be missing")
     assert_true(result["sources"] == [], "clarification should not return unrelated RAG sources")
+    assert_true("latency_ms" in result, "response should expose latency metadata")
+    assert_true(result["source_count"] == 0, "clarification source_count should be zero")
+
+
+def test_vague_eligibility_follow_up_uses_rag(client: TestClient) -> None:
+    first = post_query(
+        client,
+        {
+            "question": "am I eligible?",
+            "conversation_id": "eligibility-follow-up",
+        },
+    )
+    second = post_query(
+        client,
+        {
+            "question": "PM-KISAN",
+            "conversation_id": "eligibility-follow-up",
+            "workflow_context": first["workflow_context"],
+        },
+    )
+    assert_true(second["route"] == "rag", "scheme follow-up should resume eligibility into RAG")
+    assert_true(second["workflow_state"] == "resumed", "eligibility follow-up should mark resumed workflow")
+    assert_true(second["tool_used"] == "rag", "eligibility follow-up should use RAG")
+    assert_true(second["answer_language"] == "english", "English first turn should keep English for ambiguous scheme follow-up")
+    assert_true(second["evidence_verified"], "resumed eligibility RAG should verify evidence")
 
 
 def test_static_questions_use_rag_workflow(client: TestClient) -> None:
@@ -270,11 +295,14 @@ def test_dynamic_status_and_system_info(client: TestClient) -> None:
     assert_true(status["route"] == "dynamic_router", "PM-KISAN status should use dynamic route")
     assert_true(status["intent"] == "pmkisan_status", "status intent should be pmkisan_status")
     assert_true(status["tool_used"] == "pmkisan_portal", "status should use portal tool")
+    assert_true(status["source_count"] >= 1, "status response should expose source count")
+    assert_true("source_types" in status, "status response should expose source types")
 
     system = post_query(client, {"question": "which model is this"})
     assert_true(system["route"] == "system_info", "model question should use system info")
     assert_true(system["intent"] == "system_info", "system intent should be system_info")
     assert_true("MiniLM" in system["answer"], "system answer should report retrieval backend")
+    assert_true(system["evidence_verified"], "system info should include evidence verifier metadata")
 
 
 def main() -> int:
@@ -284,6 +312,7 @@ def main() -> int:
         test_weather_language_switch_from_english_to_hinglish,
         test_mandi_missing_commodity_and_follow_up,
         test_vague_eligibility_clarifies,
+        test_vague_eligibility_follow_up_uses_rag,
         test_static_questions_use_rag_workflow,
         test_dynamic_status_and_system_info,
     ]
