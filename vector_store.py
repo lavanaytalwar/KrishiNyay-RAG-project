@@ -354,7 +354,7 @@ class VectorStore:
         query = str(question).lower()
         blob = self._metadata_blob(result)
         category = str(result.get("category", "")).lower()
-        state = str(result.get("state", "")).lower()
+        state = self._normalise_state(result.get("state", ""))
         signal = 0.0
 
         query_state = self._query_state(query)
@@ -449,6 +449,19 @@ class VectorStore:
             if re.search(pattern, query, flags=re.I):
                 return state
         return None
+
+    @staticmethod
+    def _normalise_state(value: str) -> str:
+        normalized = re.sub(r"[\s-]+", "_", str(value or "").strip().lower())
+        aliases = {
+            "mp": "madhya_pradesh",
+            "madhya_pradesh": "madhya_pradesh",
+            "west_bengal": "west_bengal",
+            "andhra_pradesh": "andhra_pradesh",
+            "tamil_nadu": "tamil_nadu",
+            "uttar_pradesh": "uttar_pradesh",
+        }
+        return aliases.get(normalized, normalized)
 
     @staticmethod
     def _has_legal_intent(query: str) -> bool:

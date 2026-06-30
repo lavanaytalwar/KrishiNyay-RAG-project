@@ -1,5 +1,5 @@
 """
-Validate the Phase 4 farmer-facing evaluation dataset.
+Validate the farmer-facing evaluation dataset.
 
 Run:
     python validate_farmer_eval.py
@@ -15,6 +15,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent
 DATASET = ROOT / "eval" / "farmer_questions.jsonl"
+PHASE9_LABEL = "eval/phase9_hardening_cases.py"
 
 REQUIRED_KEYS = {
     "question",
@@ -26,20 +27,20 @@ REQUIRED_KEYS = {
     "source_basis",
 }
 
-EXPECTED_TOPIC_COUNTS = {
-    "pm_kisan": 16,
-    "pmfby": 16,
-    "kcc_credit": 12,
-    "land_fra_legal": 12,
-    "state_schemes": 16,
-    "mandi_weather_live": 14,
-    "crop_soil_advisory": 14,
+MIN_TOPIC_COUNTS = {
+    "pm_kisan": 36,
+    "pmfby": 36,
+    "kcc_credit": 30,
+    "land_fra_legal": 30,
+    "state_schemes": 38,
+    "mandi_weather_live": 40,
+    "crop_soil_advisory": 40,
 }
 
-EXPECTED_LANGUAGE_COUNTS = {
-    "hinglish": 45,
-    "english": 35,
-    "regional_romanized": 20,
+MIN_LANGUAGE_COUNTS = {
+    "hinglish": 100,
+    "english": 90,
+    "regional_romanized": 50,
 }
 
 ALLOWED_ROUTES = {"rag", "dynamic_router"}
@@ -51,8 +52,8 @@ ALLOWED_SOURCE_TYPES = {
     "live_portal",
 }
 
-MIN_ITEMS = 100
-SPOT_CHECK_TARGET = 15
+MIN_ITEMS = 250
+SPOT_CHECK_TARGET = 21
 
 
 def load_items(path: Path) -> list[dict[str, Any]]:
@@ -70,6 +71,15 @@ def load_items(path: Path) -> list[dict[str, Any]]:
         if not isinstance(item, dict):
             raise ValueError(f"Line {line_no}: expected a JSON object")
         items.append(item)
+    return items
+
+
+def load_eval_items(include_phase9: bool = True) -> list[dict[str, Any]]:
+    items = load_items(DATASET)
+    if include_phase9:
+        from eval.phase9_hardening_cases import generate_phase9_cases
+
+        items.extend(generate_phase9_cases())
     return items
 
 
@@ -103,9 +113,9 @@ def validate_shape(items: list[dict[str, Any]]) -> None:
         source_type = item["expected_source_type"]
         question_key = " ".join(item["question"].casefold().split())
 
-        if topic not in EXPECTED_TOPIC_COUNTS:
+        if topic not in MIN_TOPIC_COUNTS:
             raise ValueError(f"Item {index}: unknown topic {topic!r}")
-        if language not in EXPECTED_LANGUAGE_COUNTS:
+        if language not in MIN_LANGUAGE_COUNTS:
             raise ValueError(f"Item {index}: unknown language {language!r}")
         if route not in ALLOWED_ROUTES:
             raise ValueError(f"Item {index}: unknown route {route!r}")
@@ -126,16 +136,17 @@ def validate_shape(items: list[dict[str, Any]]) -> None:
     if duplicates:
         raise ValueError(f"Duplicate questions found: {duplicates[:5]}")
 
-    if dict(topics) != EXPECTED_TOPIC_COUNTS:
-        raise ValueError(
-            f"Topic counts mismatch. Expected {EXPECTED_TOPIC_COUNTS}, found {dict(topics)}"
-        )
-    if dict(languages) != EXPECTED_LANGUAGE_COUNTS:
-        raise ValueError(
-            f"Language counts mismatch. Expected {EXPECTED_LANGUAGE_COUNTS}, found {dict(languages)}"
-        )
+    for topic, minimum in MIN_TOPIC_COUNTS.items():
+        if topics[topic] < minimum:
+            raise ValueError(f"Topic {topic!r} has {topics[topic]} items; expected at least {minimum}")
+    for language, minimum in MIN_LANGUAGE_COUNTS.items():
+        if languages[language] < minimum:
+            raise ValueError(
+                f"Language {language!r} has {languages[language]} items; expected at least {minimum}"
+            )
 
     print(f"Items      : {len(items)}")
+    print(f"Sources    : {DATASET.relative_to(ROOT)}, {PHASE9_LABEL}")
     print(f"Topics     : {dict(topics)}")
     print(f"Languages  : {dict(languages)}")
     print(f"Routes     : {dict(routes)}")
@@ -204,11 +215,12 @@ def run_spot_check(items: list[dict[str, Any]]) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--spot-check", action="store_true", help="Run 15 router/retriever checks")
+    parser.add_argument("--base-only", action="store_true", help="Validate only the Phase 4 JSONL file")
+    parser.add_argument("--spot-check", action="store_true", help=f"Run {SPOT_CHECK_TARGET} router/retriever checks")
     args = parser.parse_args()
 
     try:
-        items = load_items(DATASET)
+        items = load_eval_items(include_phase9=not args.base_only)
         validate_shape(items)
         if args.spot_check:
             run_spot_check(items)

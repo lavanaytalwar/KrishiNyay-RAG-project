@@ -1,11 +1,12 @@
 # Farmer-Facing Evaluation Set
 
-Phase 4 adds a farmer-question evaluation dataset for KrishiNyay AI. This dataset is used to test query realism, expected routing, and source-type expectations before retrieval upgrades. It is not an authoritative grounding corpus and should not be indexed into ChromaDB.
+Phase 4 adds a farmer-question evaluation dataset for KrishiNyay AI. Phase 9 extends it to 250 total evaluation cases with generated hardening prompts for retrieval, dynamic routing, state matching, legal-rights routing, OCR-adjacent questions, and follow-up realism. This dataset is used for evaluation only; it is not an authoritative grounding corpus and should not be indexed into ChromaDB.
 
 ## Files
 
-- `farmer_questions.jsonl` - 100 realistic farmer-facing questions, one JSON object per line.
-- `../validate_farmer_eval.py` - structural validator for schema, duplicate questions, language counts, topic counts, and route/source-type values.
+- `farmer_questions.jsonl` - 100 Phase 4 realistic farmer-facing questions, one JSON object per line.
+- `phase9_hardening_cases.py` - 150 generated Phase 9 hardening cases using the same schema.
+- `../validate_farmer_eval.py` - structural validator for schema, duplicate questions, language minimums, topic minimums, route/source-type values, and minimum 250 total items.
 
 ## JSONL Schema
 
@@ -29,4 +30,5 @@ Run from the repository root:
 
 ```bash
 PYTHONPYCACHEPREFIX=/private/tmp/krishi_pycache krishinyay-env/bin/python validate_farmer_eval.py
+PYTHONPYCACHEPREFIX=/private/tmp/krishi_pycache krishinyay-env/bin/python validate_phase5_retrieval.py
 ```

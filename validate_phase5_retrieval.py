@@ -5,19 +5,34 @@ Run:
     python validate_phase5_retrieval.py
 """
 
-import json
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Optional
 
 ROOT = Path(__file__).resolve().parent
-DATASET = ROOT / "eval" / "farmer_questions.jsonl"
-
 MIN_DYNAMIC_ROUTE_ACCURACY = 1.00
 MIN_STATIC_TOP1_SOURCE_TYPE = 0.70
-MIN_STATIC_TOP3_SOURCE_TYPE = 0.85
+MIN_STATIC_TOP3_SOURCE_TYPE = 0.95
 MIN_TOPIC_TOP1_SOURCE_TYPE = 0.60
+
+STATE_MARKERS = {
+    "maharashtra": ("maharashtra", "namo shetkari", "shetkari"),
+    "punjab": ("punjab",),
+    "bihar": ("bihar",),
+    "rajasthan": ("rajasthan",),
+    "telangana": ("telangana", "rythu bandhu", "rythu"),
+    "gujarat": ("gujarat",),
+    "west bengal": ("west bengal", "krishak bandhu"),
+    "madhya pradesh": ("madhya pradesh", "mp agriculture"),
+}
+
+TOPIC_MARKERS = {
+    "pm_kisan": ("pm-kisan", "pmkisan", "kisan samman nidhi"),
+    "pmfby": ("pmfby", "fasal bima", "crop insurance"),
+    "kcc_credit": ("kisan credit card", "kcc"),
+    "land_fra_legal": ("forest rights", "fra", "land acquisition", "larr", "rehabilitation"),
+}
 
 SPECIFIC_CHECKS = [
     {
@@ -55,7 +70,9 @@ SPECIFIC_CHECKS = [
 
 
 def load_eval_items() -> list[dict[str, str]]:
-    return [json.loads(line) for line in DATASET.read_text(encoding="utf-8").splitlines() if line.strip()]
+    from validate_farmer_eval import load_eval_items as load_all_eval_items
+
+    return load_all_eval_items(include_phase9=True)
 
 
 def infer_source_type(result: dict[str, Any]) -> str:
@@ -109,6 +126,38 @@ def source_type_hit(results: list[dict[str, Any]], expected: str, top_k: int) ->
     return any(infer_source_type(result) == expected for result in results[:top_k])
 
 
+def expected_state_markers(question: str) -> tuple[str, ...]:
+    lowered = question.lower()
+    for state, markers in STATE_MARKERS.items():
+        if state in lowered or any(marker in lowered for marker in markers):
+            return markers
+    return ()
+
+
+def top_k_blob(results: list[dict[str, Any]], top_k: int = 3) -> str:
+    return " ".join(text_blob(result) for result in results[:top_k])
+
+
+def source_guardrail_miss(item: dict[str, str], results: list[dict[str, Any]]) -> Optional[str]:
+    blob = top_k_blob(results, 3)
+    topic = item["topic"]
+    markers = TOPIC_MARKERS.get(topic, ())
+    if markers and not any(marker in blob for marker in markers):
+        return f"{topic} top-3 missing topic marker {markers}"
+
+    if topic == "state_schemes":
+        markers = expected_state_markers(item["question"])
+        if markers and not any(marker in blob for marker in markers):
+            return f"state_schemes top-3 missing state marker {markers}"
+
+    if item["expected_route"] == "rag" and item["expected_source_type"] != "live_portal" and results:
+        top1_blob = text_blob(results[0])
+        if any(marker in top1_blob for marker in ("beneficiary status", "payment status", "live_status")) and topic != "pm_kisan":
+            return "static RAG top-3 was displaced by live-status portal content"
+
+    return None
+
+
 def main() -> int:
     sys.path.insert(0, str(ROOT))
 
@@ -128,6 +177,7 @@ def main() -> int:
     improved = []
     regressed = []
     severe_regressions = []
+    guardrail_failures = []
 
     for item in items:
         question = item["question"]
@@ -170,6 +220,11 @@ def main() -> int:
             top3_hits += 1
         else:
             misses_by_topic[topic].append((question, expected_source_type, sig(hybrid_results[0] if hybrid_results else None), [infer_source_type(result) for result in hybrid_results]))
+
+        guardrail_miss = source_guardrail_miss(item, hybrid_results)
+        if guardrail_miss:
+            guardrail_failures.append((question, guardrail_miss))
+            misses_by_topic[topic].append((question, guardrail_miss, sig(hybrid_results[0] if hybrid_results else None), [sig(result) for result in hybrid_results[:3]]))
 
         if not vector_top1_hit and hybrid_top1_hit:
             improved.append((question, sig(vector_results[0] if vector_results else None), sig(hybrid_results[0] if hybrid_results else None)))
@@ -218,12 +273,14 @@ def main() -> int:
     if top1_rate < MIN_STATIC_TOP1_SOURCE_TYPE:
         failures.append("static top-1 source-type hit below 70%")
     if top3_rate < MIN_STATIC_TOP3_SOURCE_TYPE:
-        failures.append("static top-3 source-type hit below 85%")
+        failures.append("static top-3 source-type hit below 95%")
     for topic, total in topic_totals.items():
         if total and topic_top1[topic] / total < MIN_TOPIC_TOP1_SOURCE_TYPE:
             failures.append(f"topic {topic} top-1 below 60%")
     if severe_regressions:
         failures.append(f"{len(severe_regressions)} severe vector-to-hybrid top-1 regression(s)")
+    if guardrail_failures:
+        failures.append(f"{len(guardrail_failures)} source/category guardrail failure(s)")
 
     specific_failures = []
     for check in SPECIFIC_CHECKS:

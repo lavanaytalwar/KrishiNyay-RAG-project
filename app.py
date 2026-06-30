@@ -289,7 +289,7 @@ DYNAMIC_PATTERNS = {
     ],
     "mandi_price": [
         r"\b(price|bhav|mandi|rate|aaj ka bhav|market)\b",
-        r"\b(gehu|wheat|rice|dhan|paddy|cotton|soybean|onion|potato|commodity)\b",
+        r"\b(gehu|wheat|rice|dhan|paddy|cotton|soybean|soyabean|onion|potato|commodity)\b",
     ],
     "weather": [
         r"\b(weather|rain|baarish|barish|paus|mausam|temperature|forecast|spray|spraying)\b",
@@ -418,6 +418,8 @@ def route_dynamic_query(
         }
 
     if _matches_all(normalized, DYNAMIC_PATTERNS["installment"]):
+        if re.search(r"\b(amount|kitna|kitne|paisa|paise|milta|milte|6000|rs|rupees|rule|hisson)\b", normalized, flags=re.I):
+            return None
         answer = (
             "Instalment dates aur payment status time ke saath change hote hain, isliye "
             "main purane documents se guess nahi karunga. Current payment status ke liye "
