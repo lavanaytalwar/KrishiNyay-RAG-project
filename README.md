@@ -2,7 +2,7 @@
 
 KrishiNyay AI is an India-focused retrieval-augmented generation (RAG) project for answering farmer questions about government schemes, crop insurance, farm credit, legal rights, and agriculture support using trusted documents.
 
-The current goal is a small, runnable, demo-ready RAG system before adding advanced agents, voice, WhatsApp, or vision features.
+The current goal is to perfect the existing RAG + workflow + local-generation system before adding any new field channels such as voice or WhatsApp.
 
 ## Project Status
 
@@ -11,7 +11,7 @@ Current baseline:
 - Embedding dimension: 384
 - Local indexed corpus: 1,748 chunks
 - Retrieval validation: 15/15 passing on the current RAG + dynamic routing smoke set
-- Farmer eval gate: 100 farmer-facing questions with Phase 5 hybrid retrieval validation
+- Farmer eval gate: 250 farmer-facing questions with Phase 5/9 hybrid retrieval and source-guardrail validation
 - Live data: weather forecasts via Open-Meteo with IMD verification links; mandi prices via Data.gov.in Agmarknet when an API key is configured
 - Workflow layer: intent classification, slot extraction, clarification prompts, and follow-up state for weather, mandi, status, system, and static RAG paths
 
@@ -25,9 +25,15 @@ Completed phases:
 - Phase 6 — OCR for scanned PDFs in manual ingestion with real image-PDF OCR validation.
 - Phase 7 — live mandi/weather routing with API-backed responses and safe official-portal fallback.
 - Phase 8 — workflow state, missing-field clarification, and multi-turn follow-up handling.
+- Phase 9 — quality hardening with expanded eval coverage and stricter source/state/scheme guardrails.
+- Phase 10 — answer and workflow reliability checks for language, evidence, citations, and follow-ups.
+- Phase 11 — field UX polish with mobile layout, transparent route trace, and WhatsApp-style preview.
+- Phase 12 — production-readiness baseline with structured logs, setup checks, health metadata, and regression suite.
 
 What remains:
-- Later phases — deeper LangGraph orchestration if needed, voice/WhatsApp channels, and optional fine-tuning only after enough validated data exists.
+- Install Indic OCR language packs, add real scanned official Indic PDF fixtures, and evaluate reranking only if expanded retrieval misses justify it.
+- LangGraph remains optional; use it only if the current guarded workflow becomes difficult to maintain.
+- Voice and WhatsApp should remain UX layers after the text workflow is stable.
 
 Implemented:
 - Data ingestion scripts for government scheme pages and PDFs
@@ -46,16 +52,13 @@ Implemented:
 - Local Ollama generation path and validation gate for synthesized answers
 - Phase 7 live weather forecasts and optional Agmarknet mandi-price API lookup
 - Phase 8 workflow planning for intent, slots, clarification, and follow-up routing
+- Phase 9–12 hardening gates for expanded evals, answer quality, setup readiness, structured logs, and field UI transparency
 
-In progress:
-- Phase 9 planning for voice/WhatsApp/mobile field UX
-
-Planned:
-- Indic OCR language-pack validation on real Hindi/Marathi scanned official PDFs
-- Cross-encoder reranking
-- Voice input with Indic ASR/TTS
-- Durable LangGraph agent workflows if the internal workflow baseline needs deeper branching
-- WhatsApp or IVR interface
+Planned only if needed:
+- Indic OCR language-pack validation on real Hindi/Marathi/Punjabi scanned official PDFs
+- Cross-encoder reranking when expanded eval misses show a measurable need
+- Durable LangGraph orchestration if the internal workflow baseline becomes hard to maintain
+- Voice, WhatsApp, or IVR interface after the text chat is stable
 
 ## Architecture
 
@@ -374,6 +377,19 @@ Run Phase 8 workflow validation:
 
 ```bash
 python validate_phase8_workflows.py
+```
+
+Run answer quality and setup readiness validation:
+
+```bash
+python validate_answer_quality.py
+python validate_setup_readiness.py
+```
+
+Run the full local regression suite:
+
+```bash
+python run_regression_suite.py
 ```
 
 Run RAGAS-style evaluation:

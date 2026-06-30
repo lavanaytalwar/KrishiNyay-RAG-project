@@ -108,6 +108,7 @@ def main() -> int:
     print(f"  available : {deps['available']}")
     print(f"  renderer  : {deps['renderer'] or 'missing'}")
     print(f"  engine    : {deps['engine'] or 'missing'}")
+    print(f"  languages : {', '.join(deps.get('tesseract_languages') or []) or 'unknown'}")
     if deps["missing"]:
         print(f"  missing   : {', '.join(deps['missing'])}")
     if deps["available"]:

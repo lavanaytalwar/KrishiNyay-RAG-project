@@ -34,8 +34,31 @@ def check_ocr_dependencies() -> dict[str, Any]:
         "engine": engine,
         "pytesseract_available": pytesseract_available,
         "tesseract_cli": tesseract_path or "",
+        "tesseract_languages": installed_tesseract_languages(),
         "missing": _missing_dependencies(renderer_available, engine),
     }
+
+
+def installed_tesseract_languages() -> list[str]:
+    if not shutil.which("tesseract"):
+        return []
+    try:
+        completed = subprocess.run(
+            ["tesseract", "--list-langs"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except Exception:
+        return []
+    languages = []
+    for line in completed.stdout.splitlines():
+        value = line.strip()
+        if not value or value.startswith("List of available languages"):
+            continue
+        languages.append(value)
+    return languages
 
 
 def ocr_pdf_pages(
