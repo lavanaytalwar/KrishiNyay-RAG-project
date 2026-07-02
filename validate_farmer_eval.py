@@ -37,10 +37,26 @@ MIN_TOPIC_COUNTS = {
     "crop_soil_advisory": 40,
 }
 
+BASE_TOPIC_COUNTS = {
+    "pm_kisan": 16,
+    "pmfby": 16,
+    "kcc_credit": 12,
+    "land_fra_legal": 12,
+    "state_schemes": 16,
+    "mandi_weather_live": 14,
+    "crop_soil_advisory": 14,
+}
+
 MIN_LANGUAGE_COUNTS = {
     "hinglish": 100,
     "english": 90,
     "regional_romanized": 50,
+}
+
+BASE_LANGUAGE_COUNTS = {
+    "hinglish": 45,
+    "english": 35,
+    "regional_romanized": 20,
 }
 
 ALLOWED_ROUTES = {"rag", "dynamic_router"}
@@ -53,6 +69,7 @@ ALLOWED_SOURCE_TYPES = {
 }
 
 MIN_ITEMS = 250
+BASE_MIN_ITEMS = 100
 SPOT_CHECK_TARGET = 21
 
 
@@ -83,9 +100,16 @@ def load_eval_items(include_phase9: bool = True) -> list[dict[str, Any]]:
     return items
 
 
-def validate_shape(items: list[dict[str, Any]]) -> None:
-    if len(items) < MIN_ITEMS:
-        raise ValueError(f"Expected at least {MIN_ITEMS} items, found {len(items)}")
+def validate_shape(
+    items: list[dict[str, Any]],
+    *,
+    min_items: int = MIN_ITEMS,
+    min_topic_counts: dict[str, int] = MIN_TOPIC_COUNTS,
+    min_language_counts: dict[str, int] = MIN_LANGUAGE_COUNTS,
+    source_label: str = f"{DATASET.relative_to(ROOT)}, {PHASE9_LABEL}",
+) -> None:
+    if len(items) < min_items:
+        raise ValueError(f"Expected at least {min_items} items, found {len(items)}")
 
     questions = Counter()
     topics = Counter()
@@ -113,9 +137,9 @@ def validate_shape(items: list[dict[str, Any]]) -> None:
         source_type = item["expected_source_type"]
         question_key = " ".join(item["question"].casefold().split())
 
-        if topic not in MIN_TOPIC_COUNTS:
+        if topic not in min_topic_counts:
             raise ValueError(f"Item {index}: unknown topic {topic!r}")
-        if language not in MIN_LANGUAGE_COUNTS:
+        if language not in min_language_counts:
             raise ValueError(f"Item {index}: unknown language {language!r}")
         if route not in ALLOWED_ROUTES:
             raise ValueError(f"Item {index}: unknown route {route!r}")
@@ -136,17 +160,17 @@ def validate_shape(items: list[dict[str, Any]]) -> None:
     if duplicates:
         raise ValueError(f"Duplicate questions found: {duplicates[:5]}")
 
-    for topic, minimum in MIN_TOPIC_COUNTS.items():
+    for topic, minimum in min_topic_counts.items():
         if topics[topic] < minimum:
             raise ValueError(f"Topic {topic!r} has {topics[topic]} items; expected at least {minimum}")
-    for language, minimum in MIN_LANGUAGE_COUNTS.items():
+    for language, minimum in min_language_counts.items():
         if languages[language] < minimum:
             raise ValueError(
                 f"Language {language!r} has {languages[language]} items; expected at least {minimum}"
             )
 
     print(f"Items      : {len(items)}")
-    print(f"Sources    : {DATASET.relative_to(ROOT)}, {PHASE9_LABEL}")
+    print(f"Sources    : {source_label}")
     print(f"Topics     : {dict(topics)}")
     print(f"Languages  : {dict(languages)}")
     print(f"Routes     : {dict(routes)}")
@@ -220,8 +244,15 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
-        items = load_eval_items(include_phase9=not args.base_only)
-        validate_shape(items)
+        include_phase9 = not args.base_only
+        items = load_eval_items(include_phase9=include_phase9)
+        validate_shape(
+            items,
+            min_items=BASE_MIN_ITEMS if args.base_only else MIN_ITEMS,
+            min_topic_counts=BASE_TOPIC_COUNTS if args.base_only else MIN_TOPIC_COUNTS,
+            min_language_counts=BASE_LANGUAGE_COUNTS if args.base_only else MIN_LANGUAGE_COUNTS,
+            source_label=str(DATASET.relative_to(ROOT)) if args.base_only else f"{DATASET.relative_to(ROOT)}, {PHASE9_LABEL}",
+        )
         if args.spot_check:
             run_spot_check(items)
     except ValueError as exc:

@@ -38,6 +38,8 @@ REQUIRED_PATHS = [
     ROOT / "web" / "index.html",
     ROOT / "web" / "app.js",
     ROOT / "web" / "styles.css",
+    ROOT / "demo_chroma_db" / "chroma.sqlite3",
+    ROOT / "demo_data" / "chunks" / "all_chunks.jsonl",
 ]
 
 INDIC_OCR_LANGS = {"hin", "mar", "pan"}
@@ -104,6 +106,23 @@ def main() -> int:
         else:
             warnings.append(message)
 
+    live_ingest_enabled = os.environ.get("ENABLE_LIVE_INGEST", "").strip().lower() in {"1", "true", "yes", "on"}
+    public_demo_enabled = os.environ.get("DEMO_PUBLIC", "").strip().lower() in {"1", "true", "yes", "on"}
+    live_ingest_token = bool(os.environ.get("LIVE_INGEST_TOKEN", "").strip())
+    if live_ingest_enabled and not live_ingest_token:
+        warnings.append(
+            "Live ingest is enabled without LIVE_INGEST_TOKEN; use only in trusted local demo/admin environments."
+        )
+    if public_demo_enabled and live_ingest_enabled:
+        failures.append("DEMO_PUBLIC=true requires ENABLE_LIVE_INGEST=false")
+
+    gemini_key_configured = bool(os.environ.get("GEMINI_API_KEY", "").strip())
+    llm_provider = os.environ.get("LLM_PROVIDER", "auto").strip().lower() or "auto"
+    if public_demo_enabled and llm_provider == "gemini" and not gemini_key_configured:
+        failures.append("DEMO_PUBLIC=true with LLM_PROVIDER=gemini requires GEMINI_API_KEY")
+    elif not gemini_key_configured:
+        warnings.append("Gemini API key not configured; hosted public demo generation is not launch-ready.")
+
     model = os.environ.get("OLLAMA_MODEL", "llama3.1:8b")
     ollama_ok, ollama_message = ollama_model_available(model)
     if not ollama_ok:
@@ -120,6 +139,11 @@ def main() -> int:
     print(f"  OCR baseline  : {'available' if ocr['available'] else 'missing'}")
     print(f"  Tesseract langs: {', '.join(sorted(languages)) or 'none'}")
     print(f"  Mandi API key : {'configured' if key_configured else 'missing'}")
+    print(f"  Gemini key    : {'configured' if gemini_key_configured else 'missing'}")
+    print(f"  LLM provider  : {llm_provider}")
+    print(f"  Public demo   : {'enabled' if public_demo_enabled else 'disabled'}")
+    print(f"  Live ingest   : {'enabled' if live_ingest_enabled else 'disabled'}")
+    print(f"  Ingest token  : {'configured' if live_ingest_token else 'missing'}")
     print(f"  Ollama        : {ollama_message}")
     print(f"  Node          : {subprocess.getoutput('node --version') if shutil.which('node') else 'missing'}")
 

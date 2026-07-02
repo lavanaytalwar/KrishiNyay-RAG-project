@@ -226,7 +226,36 @@ def _choose_llm():
     4. Anthropic API (dev fallback)
     5. Template fallback (always works, no LLM needed)
     """
+    provider = os.environ.get("LLM_PROVIDER", "auto").strip().lower() or "auto"
     configured_ollama = os.environ.get("OLLAMA_MODEL", "llama3.1:8b")
+
+    if provider == "gemini":
+        if not os.environ.get("GEMINI_API_KEY"):
+            raise RuntimeError("LLM_PROVIDER=gemini requires GEMINI_API_KEY.")
+        log.info("Using Gemini API")
+        return "gemini", _call_gemini
+
+    if provider == "openrouter":
+        if not os.environ.get("OPENROUTER_API_KEY"):
+            raise RuntimeError("LLM_PROVIDER=openrouter requires OPENROUTER_API_KEY.")
+        log.info("Using OpenRouter API")
+        return "openrouter", _call_openrouter
+
+    if provider == "anthropic":
+        if not os.environ.get("ANTHROPIC_API_KEY"):
+            raise RuntimeError("LLM_PROVIDER=anthropic requires ANTHROPIC_API_KEY.")
+        log.info("Using Anthropic API")
+        return "anthropic", _call_anthropic
+
+    if provider == "template":
+        log.warning("LLM_PROVIDER=template — using template fallback")
+        return "template", None
+
+    if provider not in {"auto", "ollama"}:
+        raise RuntimeError(
+            "Unsupported LLM_PROVIDER. Use auto, ollama, gemini, openrouter, anthropic, or template."
+        )
+
     try:
         import requests
         r = requests.get("http://localhost:11434/api/tags", timeout=2)
@@ -246,6 +275,12 @@ def _choose_llm():
             )
     except Exception:
         pass
+
+    if provider == "ollama":
+        raise RuntimeError(
+            f"LLM_PROVIDER=ollama requires Ollama running with model '{configured_ollama}'. "
+            f"Run: ollama pull {configured_ollama}"
+        )
 
     if os.environ.get("GEMINI_API_KEY"):
         log.info("Using Gemini API")

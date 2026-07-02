@@ -9,7 +9,7 @@ Usage:
     results = vs.query("PM-KISAN ke liye kaun eligible hai", n=3)
 """
 
-import json, pickle, logging, math, re
+import json, pickle, logging, math, os, re, shutil, tempfile
 from collections import Counter
 from pathlib import Path
 from typing import Optional
@@ -18,9 +18,8 @@ import chromadb
 log = logging.getLogger("krishinyay.vector_store")
 
 ROOT       = Path(__file__).resolve().parent
-CHROMA_DIR = ROOT / "chroma_db"
-CHUNKS_DIR = ROOT / "data" / "chunks"
-CHUNKS_FILE = CHUNKS_DIR / "all_chunks.jsonl"
+DEFAULT_CHROMA_DIR = ROOT / "chroma_db"
+DEFAULT_CHUNKS_DIR = ROOT / "data" / "chunks"
 COLLECTION = "krishinyay_v1"
 
 LEXICAL_STOPWORDS = {
@@ -33,7 +32,11 @@ LEXICAL_STOPWORDS = {
 
 class VectorStore:
     def __init__(self):
-        self.client     = chromadb.PersistentClient(path=str(CHROMA_DIR))
+        self.configured_chroma_dir = self._configured_path("CHROMA_PATH", DEFAULT_CHROMA_DIR)
+        self.chroma_dir = self._runtime_chroma_dir(self.configured_chroma_dir)
+        self.chunks_dir = self._configured_path("CHUNKS_DIR", DEFAULT_CHUNKS_DIR)
+        self.chunks_file = self.chunks_dir / "all_chunks.jsonl"
+        self.client     = chromadb.PersistentClient(path=str(self.chroma_dir))
         self.collection = self.client.get_collection(COLLECTION)
         self.embedding_backend = "unknown"
         self.index_dim = self._collection_dim()
@@ -43,6 +46,57 @@ class VectorStore:
         log.info(f"VectorStore ready — {count} chunks indexed")
         if self.chunk_records:
             log.info(f"Hybrid lexical index ready — {len(self.chunk_records)} chunks loaded")
+
+    @staticmethod
+    def _configured_path(env_name: str, default: Path) -> Path:
+        value = os.environ.get(env_name, "").strip()
+        if not value:
+            return default
+        path = Path(value).expanduser()
+        if not path.is_absolute():
+            path = ROOT / path
+        return path
+
+    @staticmethod
+    def _path_label(path: Path) -> str:
+        return str(path.relative_to(ROOT) if path.is_relative_to(ROOT) else path)
+
+    @staticmethod
+    def _env_flag(name: str) -> bool:
+        return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+    def _runtime_chroma_dir(self, source_dir: Path) -> Path:
+        """Copy packaged public demo Chroma files to writable temp storage.
+
+        Chroma opens SQLite/HNSW files with write expectations even for normal
+        queries. Keeping the checked-in demo index read-only-safe avoids dirtying
+        repository files locally and works on hosts where the app bundle is not
+        writable.
+        """
+        force_runtime_copy = (
+            self._env_flag("DEMO_PUBLIC")
+            or self._env_flag("CHROMA_RUNTIME_COPY")
+            or bool(os.environ.get("CHROMA_RUNTIME_PATH", "").strip())
+        )
+        if not force_runtime_copy:
+            return source_dir
+
+        runtime_value = os.environ.get("CHROMA_RUNTIME_PATH", "").strip()
+        runtime_dir = (
+            Path(runtime_value).expanduser()
+            if runtime_value
+            else Path(tempfile.gettempdir()) / "krishinyay_demo_chroma_db"
+        )
+        if not runtime_dir.is_absolute():
+            runtime_dir = ROOT / runtime_dir
+
+        if runtime_dir.resolve() == source_dir.resolve():
+            return source_dir
+
+        if not runtime_dir.exists():
+            log.info("Copying public demo Chroma index from %s to %s", source_dir, runtime_dir)
+            shutil.copytree(source_dir, runtime_dir)
+        return runtime_dir
 
     def _collection_dim(self) -> Optional[int]:
         """Return stored embedding dimension for non-empty Chroma collections."""
@@ -56,7 +110,7 @@ class VectorStore:
         return None
 
     def _index_meta(self) -> dict:
-        meta_path = CHUNKS_DIR / "embed_meta.json"
+        meta_path = self.chunks_dir / "embed_meta.json"
         if not meta_path.exists():
             return {}
         try:
@@ -66,12 +120,12 @@ class VectorStore:
 
     def _load_chunk_records(self) -> list[dict]:
         """Load flat chunk metadata for lightweight lexical reranking."""
-        if not CHUNKS_FILE.exists():
+        if not self.chunks_file.exists():
             log.warning("No chunk JSONL found — using vector-only retrieval")
             return []
 
         records = []
-        for line in CHUNKS_FILE.read_text(encoding="utf-8").splitlines():
+        for line in self.chunks_file.read_text(encoding="utf-8").splitlines():
             if not line.strip():
                 continue
             try:
@@ -107,8 +161,10 @@ class VectorStore:
 
         try:
             from sentence_transformers import SentenceTransformer
+            local_files_only = self._env_flag("HF_HUB_OFFLINE") or self._env_flag("TRANSFORMERS_OFFLINE")
             model = SentenceTransformer(
-                "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+                "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+                local_files_only=local_files_only,
             )
             model_dim = model.get_sentence_embedding_dimension()
             if self.index_dim and model_dim != self.index_dim:
@@ -131,7 +187,7 @@ class VectorStore:
 
     def _load_tfidf_embedder(self):
         """Load the saved TF-IDF vectorizer used at indexing time."""
-        vec_path = CHROMA_DIR / "tfidf_vectorizer.pkl"
+        vec_path = self.chroma_dir / "tfidf_vectorizer.pkl"
         if not vec_path.exists():
             raise RuntimeError(
                 "No compatible embedding backend available. "
@@ -543,4 +599,7 @@ class VectorStore:
             "embedding_dim": self.index_dim,
             "retrieval_mode": "hybrid_vector_lexical" if self.chunk_records else "vector_only",
             "lexical_chunks": len(self.chunk_records),
+            "chroma_path": self._path_label(self.configured_chroma_dir),
+            "chroma_runtime_path": self._path_label(self.chroma_dir),
+            "chunks_dir": self._path_label(self.chunks_dir),
         }

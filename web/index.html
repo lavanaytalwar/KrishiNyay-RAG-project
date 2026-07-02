@@ -29,7 +29,7 @@
 
         <div class="sidebar-card">
           <span class="sticky-badge badge-green">Grounded RAG</span>
-          <span class="sticky-badge badge-yellow">100 Eval Qs</span>
+          <span class="sticky-badge badge-yellow">250 Eval Qs</span>
           <span class="sticky-badge badge-blue">Hybrid + OCR</span>
           <span class="sticky-badge badge-pink">Live APIs</span>
         </div>
@@ -57,12 +57,33 @@
               <h2 id="landingTitle">KrishiNyay AI explains schemes with citations instead of guesses.</h2>
               <p>
                 The app now combines a 250-question farmer eval set, hybrid MiniLM
-                retrieval, OCR-ready PDF ingestion, local Ollama answer generation,
+                retrieval, OCR-ready PDF ingestion, Gemini/Ollama answer generation,
                 live-data routing, answer-quality gates, and production-readiness checks.
               </p>
+              <div class="checklist-block">
+                <h3>Public demo mode</h3>
+                <p>
+                  The hosted demo is read-only: full Chroma retrieval stays enabled,
+                  but public document ingest is locked to prevent index poisoning.
+                </p>
+              </div>
               <div class="landing-actions">
                 <a class="primary-link" href="#chat" data-route="chat">Open Chat</a>
                 <a class="secondary-link" href="#knowledge" data-route="knowledge">View Source Checks</a>
+              </div>
+              <div class="metric-grid" aria-label="Public demo prompts">
+                <button class="test-card" data-question="PM-KISAN mein kitna paisa milta hai?">
+                  <span class="sticky-badge badge-yellow">RAG</span>
+                  PM-KISAN amount
+                </button>
+                <button class="test-card" data-question="Land acquisition mein farmer ke rights kya hain?">
+                  <span class="sticky-badge badge-blue">Legal</span>
+                  Land rights
+                </button>
+                <button class="test-card" data-question="Kal baarish hogi kya, spraying karu?">
+                  <span class="sticky-badge badge-green">Live</span>
+                  Weather follow-up
+                </button>
               </div>
               <div class="hero-widget-row" aria-label="Project motion widgets">
                 <div class="animation-card large" data-motion-slot="hero" data-animation="farmer-ai">
@@ -257,6 +278,10 @@
                 URL
                 <input id="ingestUrlInput" placeholder="https://official-source.gov.in/..." />
               </label>
+              <label>
+                Admin token
+                <input id="ingestTokenInput" type="password" autocomplete="off" placeholder="Optional LIVE_INGEST_TOKEN" />
+              </label>
               <div class="form-row">
                 <label>
                   Category
@@ -276,7 +301,7 @@
                 <textarea id="ingestTextInput" required minlength="40" rows="8" placeholder="Paste cleaned government text here..."></textarea>
               </label>
               <button type="submit">Index Document</button>
-              <p class="form-note" id="ingestResult">Indexed documents are immediately searchable in this running app.</p>
+              <p class="form-note" id="ingestResult">Live ingest is disabled unless ENABLE_LIVE_INGEST=true.</p>
             </form>
           </div>
         </section>

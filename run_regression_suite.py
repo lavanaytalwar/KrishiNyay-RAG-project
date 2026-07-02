@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -45,10 +47,18 @@ def main() -> int:
     python = sys.executable
     env = os.environ.copy()
     env.setdefault("PYTHONPYCACHEPREFIX", "/private/tmp/krishinyay_pycache")
+    runtime_chroma = Path(tempfile.gettempdir()) / "krishinyay_regression_chroma"
+    if runtime_chroma.exists():
+        shutil.rmtree(runtime_chroma)
+    env.setdefault("CHROMA_RUNTIME_COPY", "true")
+    env.setdefault("CHROMA_RUNTIME_PATH", str(runtime_chroma))
+    env.setdefault("HF_HUB_OFFLINE", "1")
+    env.setdefault("TRANSFORMERS_OFFLINE", "1")
 
     gates = [
         Gate("setup readiness", [python, "validate_setup_readiness.py"]),
-        Gate("Python syntax", [python, "-m", "py_compile", "app.py", "rag_chain.py", "vector_store.py", "workflow.py", "live_data.py", "language_policy.py", "ocr_utils.py", "validate_corpus.py", "validate_farmer_eval.py", "validate_phase5_retrieval.py", "validate_ocr_pipeline.py", "validate_phase7_live.py", "validate_phase8_workflows.py", "validate_answer_quality.py", "validate_setup_readiness.py"]),
+        Gate("Python syntax", [python, "-m", "py_compile", "app.py", "rag_chain.py", "vector_store.py", "workflow.py", "live_data.py", "language_policy.py", "ocr_utils.py", "validate_corpus.py", "validate_farmer_eval.py", "validate_phase5_retrieval.py", "validate_ocr_pipeline.py", "validate_phase7_live.py", "validate_phase8_workflows.py", "validate_answer_quality.py", "validate_setup_readiness.py", "validate_public_demo.py"]),
+        Gate("public demo dry-run", [python, "validate_public_demo.py"]),
         Gate("farmer eval", [python, "validate_farmer_eval.py"]),
         Gate("farmer eval spot-check", [python, "validate_farmer_eval.py", "--spot-check"]),
         Gate("hybrid retrieval", [python, "validate_phase5_retrieval.py"]),

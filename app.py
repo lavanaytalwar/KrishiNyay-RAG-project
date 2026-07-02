@@ -1,13 +1,14 @@
 import hashlib
 import json
 import logging
+import os
 import re
 import time
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -35,6 +36,18 @@ app = FastAPI(
     description="Source-grounded RAG assistant for Indian agriculture schemes.",
     version="0.4.0",
 )
+
+
+def env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def demo_public_enabled() -> bool:
+    return env_flag("DEMO_PUBLIC")
+
+
+def configured_path_label(name: str, default: str) -> str:
+    return os.environ.get(name, default).strip() or default
 
 
 class QueryRequest(BaseModel):
@@ -157,13 +170,13 @@ RECENT_CAPABILITIES = [
     {
         "phase": "Phase 4",
         "title": "Farmer eval set",
-        "metric": "100 questions",
+        "metric": "250 questions",
         "summary": "Hindi, Hinglish, English, and regional-romanized farmer questions validate routes, topics, language coverage, and source types.",
     },
     {
         "phase": "Phase 5",
         "title": "Hybrid retrieval",
-        "metric": "98% top-1 / 100% top-3",
+        "metric": "93% top-1 / 99% top-3",
         "summary": "MiniLM remains primary while lexical boosts improve source selection without measured hybrid regressions.",
     },
     {
@@ -196,17 +209,17 @@ VALIDATION_GATES = [
     {
         "name": "Farmer eval dataset",
         "command": "validate_farmer_eval.py",
-        "result": "100 items valid",
+        "result": "250 items valid",
     },
     {
         "name": "Farmer eval spot-check",
         "command": "validate_farmer_eval.py --spot-check",
-        "result": "15 router/retriever checks passed",
+        "result": "21 router/retriever checks passed",
     },
     {
         "name": "Hybrid retrieval gate",
         "command": "validate_phase5_retrieval.py",
-        "result": "98% static top-1, 100% static top-3, 0 regressions",
+        "result": "93% static top-1, 99% static top-3, 0 hybrid regressions",
     },
     {
         "name": "OCR pipeline",
@@ -239,6 +252,11 @@ VALIDATION_GATES = [
         "result": "Required local dependencies checked with clear optional setup warnings",
     },
     {
+        "name": "Public demo readiness",
+        "command": "validate_public_demo.py",
+        "result": "Packaged Chroma index, public ingest lock, static RAG, and workflow follow-up checked",
+    },
+    {
         "name": "Full regression suite",
         "command": "run_regression_suite.py",
         "result": "Runs all local regression gates in one command",
@@ -262,6 +280,14 @@ API_KEY_GUIDE = {
     "env": "DATA_GOV_IN_API_KEY=your_key_here",
     "note": "Weather does not need a key. PM-KISAN status remains a portal route because it is farmer-specific.",
 }
+
+PUBLIC_DEMO_FLOW = [
+    "Open Home and show the farmer-first prompt buttons.",
+    "Ask a PM-KISAN amount question and show official-source RAG evidence.",
+    "Ask a land acquisition rights question and show legal-source routing.",
+    "Ask 'Kal baarish hogi kya, spraying karu?' and provide Jaipur when asked.",
+    "Open System to show MiniLM, Chroma, hybrid retrieval, Gemini, and validation readiness.",
+]
 
 DEMO_QUESTIONS = [
     {
@@ -288,6 +314,11 @@ DEMO_QUESTIONS = [
         "label": "Weather advisory",
         "question": "Kal baarish hogi kya, spraying karu?",
         "kind": "dynamic_router",
+    },
+    {
+        "label": "Legal rights",
+        "question": "Land acquisition mein farmer ke rights kya hain?",
+        "kind": "rag",
     },
 ]
 
@@ -387,7 +418,7 @@ def route_system_query(question: str) -> Optional[dict]:
             "This is KrishiNyay AI. Retrieval uses "
             f"{embedding_backend} embeddings with {retrieval_mode} over {total_chunks} indexed chunks. "
             f"Answer generation is currently configured as {chain.llm_provider}. "
-            "On this local setup, that should be Ollama with llama3.1:8b when Ollama is running. "
+            "Local demos can use Ollama with llama3.1:8b; public hosted demos should use Gemini. "
             f"Weather uses {live_status.get('weather_provider', 'the configured weather provider')}; "
             f"mandi prices use {live_status.get('mandi_provider', 'the configured mandi provider')} "
             f"when the API key is {mandi_status}."
@@ -571,6 +602,9 @@ def split_live_document(text: str, chunk_size: int = 650, overlap: int = 80) -> 
 def setup_readiness(chain: RAGChain, live_status: dict[str, Any]) -> dict[str, Any]:
     ocr = check_ocr_dependencies()
     languages = set(ocr.get("tesseract_languages") or [])
+    stats = chain.store.stats()
+    public_mode = demo_public_enabled()
+    configured_provider = os.environ.get("LLM_PROVIDER", "auto").strip().lower() or "auto"
     required_paths = {
         "eval_dataset": (ROOT / "eval" / "farmer_questions.jsonl").exists(),
         "web_ui": (WEB_DIR / "index.html").exists(),
@@ -578,24 +612,72 @@ def setup_readiness(chain: RAGChain, live_status: dict[str, Any]) -> dict[str, A
         "frontend_css": (WEB_DIR / "styles.css").exists(),
         "sample_data": (ROOT / "sample_data").exists(),
     }
+    public_paths = {
+        "demo_chroma": (ROOT / configured_path_label("CHROMA_PATH", "chroma_db")).exists(),
+        "demo_chunks": (ROOT / configured_path_label("CHUNKS_DIR", "data/chunks") / "all_chunks.jsonl").exists(),
+    }
+    public_demo_ready = (
+        public_mode
+        and stats.get("total_chunks") == 1748
+        and stats.get("lexical_chunks") == 1748
+        and stats.get("embedding_dim") == 384
+        and chain.llm_provider == "gemini"
+        and not live_ingest_enabled()
+        and all(public_paths.values())
+    )
     return {
         "phase": "Phase 12",
+        "demo_public": public_mode,
+        "public_demo_ready": public_demo_ready,
+        "configured_llm_provider": configured_provider,
         "ollama_generation_ready": chain.llm_provider.startswith("ollama:"),
+        "gemini_generation_ready": chain.llm_provider == "gemini",
         "llm_provider": chain.llm_provider,
+        "chroma_path": stats.get("chroma_path"),
+        "chroma_runtime_path": stats.get("chroma_runtime_path"),
+        "chunks_dir": stats.get("chunks_dir"),
         "ocr_ready": bool(ocr.get("available")),
         "ocr_engine": ocr.get("engine") or "",
         "ocr_languages": sorted(languages),
         "indic_ocr_ready": {"hin", "mar", "pan"}.issubset(languages),
         "mandi_api_configured": bool(live_status.get("mandi_api_configured")),
         "weather_api_configured": bool(live_status.get("weather_api_configured")),
+        "live_ingest_enabled": live_ingest_enabled(),
+        "live_ingest_requires_token": bool(os.environ.get("LIVE_INGEST_TOKEN", "").strip()),
         "required_paths": required_paths,
         "required_paths_ready": all(required_paths.values()),
+        "public_paths": public_paths,
+        "public_paths_ready": all(public_paths.values()),
         "notes": [
             "Fine-tuning is intentionally not part of the active roadmap.",
             "Install tesseract-lang before strict Indic OCR validation.",
             "Set DATA_GOV_IN_API_KEY or AGMARKNET_API_KEY for live mandi prices.",
+            "Set LLM_PROVIDER=gemini and GEMINI_API_KEY for the hosted public demo.",
+            "Set ENABLE_LIVE_INGEST=true only for trusted demo/admin environments.",
         ],
     }
+
+
+def live_ingest_enabled() -> bool:
+    if demo_public_enabled():
+        return False
+    return env_flag("ENABLE_LIVE_INGEST")
+
+
+def verify_live_ingest_access(token: Optional[str]) -> None:
+    if demo_public_enabled():
+        raise HTTPException(
+            status_code=403,
+            detail="Live ingest is disabled in public demo mode.",
+        )
+    if not live_ingest_enabled():
+        raise HTTPException(
+            status_code=403,
+            detail="Live ingest is disabled. Set ENABLE_LIVE_INGEST=true only in a trusted demo/admin environment.",
+        )
+    expected_token = os.environ.get("LIVE_INGEST_TOKEN", "").strip()
+    if expected_token and token != expected_token:
+        raise HTTPException(status_code=403, detail="Invalid or missing live ingest token.")
 
 
 def source_type_summary(sources: list[dict[str, Any]]) -> list[str]:
@@ -653,6 +735,9 @@ def health():
             "llm_provider": chain.llm_provider,
             "retrieval_mode": stats.get("retrieval_mode", "vector_only"),
             "lexical_chunks": stats.get("lexical_chunks", 0),
+            "chroma_path": stats.get("chroma_path"),
+            "chroma_runtime_path": stats.get("chroma_runtime_path"),
+            "chunks_dir": stats.get("chunks_dir"),
             "dynamic_router": "enabled",
             "live_data": live_status,
             "phase": "Phase 12",
@@ -660,7 +745,9 @@ def health():
             "quality_hardening": "enabled",
             "fine_tuning": "not_required",
             "readiness": readiness,
-            "demo_ready": True,
+            "demo_public": demo_public_enabled(),
+            "public_demo_ready": readiness.get("public_demo_ready", False),
+            "demo_ready": readiness.get("public_demo_ready", True) if demo_public_enabled() else True,
         }
     except Exception as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -676,6 +763,13 @@ def demo_config():
         "api_key_guide": API_KEY_GUIDE,
         "remaining_work": REMAINING_WORK,
         "demo_questions": DEMO_QUESTIONS,
+        "public_demo": demo_public_enabled(),
+        "demo_hosting": "hugging_face_spaces",
+        "recommended_demo_flow": PUBLIC_DEMO_FLOW,
+        "public_safety_notice": (
+            "Public demo mode is read-only. It uses official/public sources, "
+            "keeps live ingest disabled, and should be verified against official portals."
+        ),
         "motion_slots": MOTION_SLOTS,
         "media_note": (
             "The homepage uses lightweight CSS/HTML motion UI. Reference MP4s "
@@ -909,7 +1003,8 @@ def query(payload: QueryRequest):
 
 
 @app.post("/ingest", response_model=IngestResponse)
-def ingest(payload: IngestRequest):
+def ingest(payload: IngestRequest, x_ingest_token: Optional[str] = Header(default=None)):
+    verify_live_ingest_access(x_ingest_token)
     try:
         chain = get_chain(4)
         chunks = split_live_document(payload.text)
@@ -938,6 +1033,30 @@ def ingest(payload: IngestRequest):
             documents=chunks,
             metadatas=metadatas,
         )
+        live_records = []
+        for chunk_id, chunk, metadata in zip(ids, chunks, metadatas):
+            searchable = " ".join(
+                str(metadata.get(key, ""))
+                for key in ["display", "source", "category", "state", "language", "doc_type"]
+            )
+            searchable = f"{chunk} {searchable}"
+            live_records.append({
+                "id": chunk_id,
+                "text": chunk,
+                "source": metadata["source"],
+                "display": metadata["display"],
+                "url": metadata["url"],
+                "category": metadata["category"],
+                "state": metadata["state"],
+                "priority": metadata["priority"],
+                "tokens": chain.store._tokenize(searchable),
+            })
+        if hasattr(chain.store, "chunk_records"):
+            live_ids = set(ids)
+            chain.store.chunk_records = [
+                record for record in chain.store.chunk_records if record.get("id") not in live_ids
+            ]
+            chain.store.chunk_records.extend(live_records)
         return IngestResponse(status="indexed", doc_id=doc_id, chunks_added=len(chunks))
     except Exception as exc:
         log.exception("Live ingest failed")

@@ -30,6 +30,8 @@ web/media/*.mp4
 web/media/*.mov
 web/media/*.webm
 
+# Local generated retrieval artifacts stay untracked.
+# Public demo artifacts are intentionally allowed as demo_chroma_db/ and demo_data/.
 chroma_db/
 data/
 logs/

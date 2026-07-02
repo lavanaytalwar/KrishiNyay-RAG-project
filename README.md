@@ -1,3 +1,13 @@
+---
+title: KrishiNyay AI
+emoji: 🌾
+colorFrom: green
+colorTo: yellow
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # KrishiNyay AI — Source-Grounded RAG Assistant for Indian Farmers
 
 KrishiNyay AI is an India-focused retrieval-augmented generation (RAG) project for answering farmer questions about government schemes, crop insurance, farm credit, legal rights, and agriculture support using trusted documents.
@@ -14,6 +24,7 @@ Current baseline:
 - Farmer eval gate: 250 farmer-facing questions with Phase 5/9 hybrid retrieval and source-guardrail validation
 - Live data: weather forecasts via Open-Meteo with IMD verification links; mandi prices via Data.gov.in Agmarknet when an API key is configured
 - Workflow layer: intent classification, slot extraction, clarification prompts, and follow-up state for weather, mandi, status, system, and static RAG paths
+- Public demo path: Hugging Face Spaces Docker with full packaged Chroma index, Gemini generation, and public ingest disabled
 
 Completed phases:
 - Phase 0 — repo hygiene and truthful MiniLM baseline.
@@ -53,6 +64,7 @@ Implemented:
 - Phase 7 live weather forecasts and optional Agmarknet mandi-price API lookup
 - Phase 8 workflow planning for intent, slots, clarification, and follow-up routing
 - Phase 9–12 hardening gates for expanded evals, answer quality, setup readiness, structured logs, and field UI transparency
+- Public demo packaging with `demo_chroma_db/`, `demo_data/chunks/`, Gemini provider selection, and public-mode readiness validation
 
 Planned only if needed:
 - Indic OCR language-pack validation on real Hindi/Marathi/Punjabi scanned official PDFs
@@ -107,8 +119,11 @@ weather / spraying questions       → live Open-Meteo forecast plus IMD/local a
 ├── scrape_schemes.py       # Government scheme scraping
 ├── download_pdfs.py        # PDF download and text extraction
 ├── validate_corpus.py      # Retrieval smoke validation
+├── validate_public_demo.py # Public demo packaging/readiness validation
 ├── evaluate_rag.py         # RAGAS-style evaluation
 ├── sample_data/            # Small tracked demo corpus
+├── demo_chroma_db/          # Packaged full public demo Chroma index
+├── demo_data/chunks/        # Packaged public demo lexical chunk metadata
 ├── corpus/pdfs/            # Tracked templates and future curated PDF corpus
 ├── web/                    # Static frontend
 ├── web/media/              # Ignored reference media for motion design
@@ -223,10 +238,12 @@ API endpoints:
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /health` | Shows indexed chunks, collection, embedding backend, embedding dimension, and LLM provider |
-| `GET /demo-config` | Shows completed phases, remaining work, demo questions, and motion UI slots |
+| `GET /health` | Shows indexed chunks, collection, embedding backend, embedding dimension, LLM provider, retrieval paths, and public-demo readiness |
+| `GET /demo-config` | Shows completed phases, remaining work, demo questions, public demo flow, and motion UI slots |
 | `POST /query` | Answers a question using workflow routing, dynamic tools, or RAG, with route/source/workflow metadata |
-| `POST /ingest` | Adds a text document to the live vector store |
+| `POST /ingest` | Adds a text document to the live vector store only when `ENABLE_LIVE_INGEST=true`; use `LIVE_INGEST_TOKEN` for admin/demo protection |
+
+`POST /ingest` is disabled by default because it writes into the retrieval index. Enable it only for trusted local demo/admin use, not public deployments.
 
 ## Frontend Motion UI
 
@@ -265,6 +282,44 @@ For platforms that provide `PORT`, the included `Dockerfile` runs:
 uvicorn app:app --host 0.0.0.0 --port ${PORT:-7860}
 ```
 
+### Public Hugging Face Spaces Demo
+
+The public demo uses the full packaged Chroma index rather than rebuilding retrieval artifacts on startup:
+
+```text
+demo_chroma_db/
+demo_data/chunks/all_chunks.jsonl
+demo_data/chunks/embed_meta.json
+```
+
+When `DEMO_PUBLIC=true`, the app copies `demo_chroma_db/` to writable temp storage before Chroma opens it. This keeps the checked-in index stable and avoids SQLite read-only errors on hosted platforms.
+
+Recommended public demo environment:
+
+```env
+DEMO_PUBLIC=true
+ENABLE_LIVE_INGEST=false
+CHROMA_PATH=demo_chroma_db
+CHUNKS_DIR=demo_data/chunks
+LLM_PROVIDER=gemini
+GEMINI_API_KEY=...
+GEMINI_MODEL=gemini-1.5-flash
+```
+
+Validate the packaged public demo locally:
+
+```bash
+python validate_public_demo.py
+```
+
+Before launch with a real Gemini key:
+
+```bash
+LLM_PROVIDER=gemini GEMINI_API_KEY=... python validate_public_demo.py --require-gemini
+```
+
+See `PUBLIC_DEMO.md` for the Hugging Face setup and demo script.
+
 ## LLM Modes
 
 The project works without a paid LLM by returning a template answer from the top retrieved chunk. For real local answer generation, start Ollama and pull the default model:
@@ -274,10 +329,11 @@ ollama pull llama3.1:8b
 python validate_generation.py --provider ollama
 ```
 
-The local model can be overridden with `OLLAMA_MODEL`. Hosted providers remain optional fallbacks:
+The active provider can be pinned with `LLM_PROVIDER` (`auto`, `ollama`, `gemini`, `openrouter`, `anthropic`, or `template`). The public hosted demo should use Gemini:
 
 ```bash
 export GEMINI_API_KEY=...
+export LLM_PROVIDER=gemini
 export OPENROUTER_API_KEY=...
 export ANTHROPIC_API_KEY=...
 ```
@@ -367,6 +423,14 @@ python validate_corpus.py
 
 The validation script checks both static RAG retrieval and dynamic routing for live data questions.
 
+Run the expanded farmer eval and retrieval gate:
+
+```bash
+python validate_farmer_eval.py
+python validate_farmer_eval.py --spot-check
+python validate_phase5_retrieval.py
+```
+
 Run Phase 7 live-data unit validation:
 
 ```bash
@@ -405,7 +469,7 @@ Outputs are written under `eval/`.
 - The local PMFBY PDF copy may be an HTML/error page saved with a `.pdf` extension; crop-insurance coverage should be repaired with a valid official document or sample source.
 - Live beneficiary status and payment status remain portal-guided because they are farmer-specific. Mandi prices require a Data.gov.in API key for live lookup; weather works without a key but should still be verified with IMD/local advisories before spraying.
 - OCR requires local system Tesseract plus Python OCR packages; core English OCR is validated, while Indic OCR requires extra Tesseract language data.
-- `data/` and `chroma_db/` are ignored intentionally, so reproducible demos should use `sample_data/` or re-run ingestion locally.
+- `data/` and `chroma_db/` are ignored intentionally for local/generated work. Public demos use checked-in `demo_data/chunks/` and `demo_chroma_db/`.
 
 ## Resume Bullet
 

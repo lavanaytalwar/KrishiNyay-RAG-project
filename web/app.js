@@ -41,6 +41,7 @@ const routeTrace = document.querySelector("#routeTrace");
 const validationGrid = document.querySelector("#validationGrid");
 const apiKeyGuide = document.querySelector("#apiKeyGuide");
 const demoChecklist = document.querySelector("#demoChecklist");
+const ingestInputs = ingestForm ? ingestForm.querySelectorAll("input, textarea, button") : [];
 
 function escapeHtml(value) {
   return String(value || "")
@@ -301,8 +302,10 @@ function renderRouteTrace(data) {
 
 function renderStatus(health) {
   const badges = [
+    [health.demo_public ? "badge-green" : "badge-gray", health.demo_public ? "Public demo" : "Local mode"],
     ["badge-blue", `${health.total_chunks ?? 0} chunks`],
     ["badge-yellow", health.embedding_backend || "embedding unknown"],
+    ["badge-pink", health.llm_provider || "LLM unknown"],
   ];
   statusStrip.innerHTML = badges
     .map(([klass, text]) => `<span class="sticky-badge ${klass}">${escapeHtml(text)}</span>`)
@@ -319,6 +322,9 @@ function renderHealth(health) {
     ["Dimensions", health.embedding_dim],
     ["Retrieval", health.retrieval_mode],
     ["Lexical chunks", health.lexical_chunks],
+    ["Chroma path", health.chroma_path || "chroma_db"],
+    ["Chroma runtime", health.chroma_runtime_path || health.chroma_path || "chroma_db"],
+    ["Chunks dir", health.chunks_dir || "data/chunks"],
     ["LLM", health.llm_provider],
     ["Collection", health.collection],
     ["Router", health.dynamic_router],
@@ -327,6 +333,11 @@ function renderHealth(health) {
     ["Phase", health.phase],
     ["OCR", readiness.ocr_ready ? readiness.ocr_engine || "ready" : "needs setup"],
     ["Indic OCR", readiness.indic_ocr_ready ? "ready" : "needs language packs"],
+    ["Public demo", health.demo_public ? "enabled" : "disabled"],
+    ["Public ready", health.public_demo_ready ? "ready" : "not ready"],
+    ["Gemini", readiness.gemini_generation_ready ? "active" : "not active"],
+    ["Live ingest", readiness.live_ingest_enabled ? "enabled" : "disabled"],
+    ["Ingest token", readiness.live_ingest_requires_token ? "required" : "not required"],
     ["Fine-tuning", health.fine_tuning || "not required"],
     ["Demo", health.demo_ready ? "ready" : "not ready"],
   ];
@@ -428,8 +439,17 @@ function renderApiKeyGuide(config, health = state.health) {
 function renderDemoChecklist(config) {
   const remaining = config?.remaining_work || [];
   const mediaNote = config?.media_note || "";
+  const publicFlow = config?.recommended_demo_flow || [];
+  const safetyNotice = config?.public_safety_notice || "";
   demoChecklist.innerHTML = `
     <div class="checklist-block">
+      <h3>Public demo readiness</h3>
+      ${safetyNotice ? `<p>${escapeHtml(safetyNotice)}</p>` : ""}
+      ${publicFlow.length ? `
+        <ol>
+          ${publicFlow.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+        </ol>
+      ` : ""}
       <h3>Hardening focus after Phase 12 baseline</h3>
       <ul>
         ${remaining.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
@@ -463,6 +483,22 @@ function annotateMotionSlots(config) {
   });
 }
 
+function applyPublicDemoLock() {
+  const publicMode = Boolean(state.health?.demo_public || state.demoConfig?.public_demo);
+  const ingestEnabled = Boolean(state.health?.readiness?.live_ingest_enabled);
+  const locked = publicMode || !ingestEnabled;
+  ingestInputs.forEach((input) => {
+    input.disabled = locked;
+  });
+  if (publicMode) {
+    ingestResult.textContent =
+      "Public demo mode is read-only. Document ingest is disabled; run locally for OCR/admin ingestion.";
+  } else if (!ingestEnabled) {
+    ingestResult.textContent =
+      "Live ingest is disabled. Set ENABLE_LIVE_INGEST=true only in a trusted local demo/admin environment.";
+  }
+}
+
 async function fetchDemoConfig() {
   try {
     const response = await fetch("/demo-config");
@@ -476,6 +512,7 @@ async function fetchDemoConfig() {
     renderDemoChecklist(config);
     renderDemoQuestions(config);
     annotateMotionSlots(config);
+    applyPublicDemoLock();
   } catch (error) {
     phaseGrid.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
     recentPhaseGrid.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
@@ -494,6 +531,7 @@ async function fetchHealth() {
     renderStatus(health);
     renderHealth(health);
     renderApiKeyGuide(state.demoConfig, health);
+    applyPublicDemoLock();
   } catch (error) {
     statusStrip.innerHTML = `<span class="sticky-badge badge-pink">Backend unavailable</span>`;
     healthGrid.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
@@ -590,6 +628,13 @@ document.querySelectorAll("[data-question]").forEach((button) => {
 
 ingestForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (state.health?.readiness && !state.health.readiness.live_ingest_enabled) {
+    ingestResult.textContent =
+      state.health.demo_public
+        ? "Public demo mode is read-only. Document ingest is disabled."
+        : "Live ingest is disabled. Set ENABLE_LIVE_INGEST=true only in a trusted local demo/admin environment.";
+    return;
+  }
   ingestResult.textContent = "Indexing document...";
 
   const payload = {
@@ -600,11 +645,14 @@ ingestForm.addEventListener("submit", async (event) => {
     doc_type: document.querySelector("#ingestDocTypeInput").value.trim() || "Guidelines",
     text: document.querySelector("#ingestTextInput").value.trim(),
   };
+  const ingestToken = document.querySelector("#ingestTokenInput").value.trim();
+  const headers = { "Content-Type": "application/json" };
+  if (ingestToken) headers["X-Ingest-Token"] = ingestToken;
 
   try {
     const response = await fetch("/ingest", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(payload),
     });
     if (!response.ok) throw new Error(await response.text());

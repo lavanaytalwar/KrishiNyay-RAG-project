@@ -141,7 +141,7 @@ def _format_scores(result: dict) -> str:
     )
 
 
-def run_validation(with_llm: bool = False):
+def run_validation(with_llm: bool = False) -> int:
     print()
     print("═" * 70)
     print("  KRISHINYAY — CORPUS VALIDATION")
@@ -162,9 +162,10 @@ def run_validation(with_llm: bool = False):
         print()
         print(f"  ✗ Could not load VectorStore: {e}")
         print("    Run: python chunk_and_embed.py first")
-        return
+        return 1
 
     chain = None
+    llm_errors = 0
     if with_llm:
         try:
             from rag_chain import RAGChain
@@ -172,6 +173,7 @@ def run_validation(with_llm: bool = False):
             print("  LLM: enabled")
         except Exception as e:
             print(f"  LLM: not available ({e})")
+            llm_errors += 1
 
     passed = 0
     total = len(TEST_QUERIES)
@@ -245,6 +247,7 @@ def run_validation(with_llm: bool = False):
             except Exception as e:
                 print()
                 print(f"  💬 LLM error: {e}")
+                llm_errors += 1
 
     avg_sim = sum(all_sims) / len(all_sims) if all_sims else 0
     avg_hybrid = sum(all_hybrid_scores) / len(all_hybrid_scores) if all_hybrid_scores else 0
@@ -269,12 +272,17 @@ def run_validation(with_llm: bool = False):
         print("  ✗   Low pass rate — check chunk_and_embed.py and retrieval configuration")
 
     print()
-    print("  Next step: use eval/farmer_questions.jsonl for Phase 5 threshold tuning")
+    print("  Full eval gate: validate_phase5_retrieval.py covers the 250-item farmer set")
     print()
+    if passed != total or route_correct != total:
+        return 1
+    if with_llm and llm_errors:
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--with-llm", action="store_true", help="Also generate LLM answers for each query")
     args = p.parse_args()
-    run_validation(with_llm=args.with_llm)
+    raise SystemExit(run_validation(with_llm=args.with_llm))

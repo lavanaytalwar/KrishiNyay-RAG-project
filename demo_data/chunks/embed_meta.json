@@ -1,0 +1,11 @@
+{
+  "collection": "krishinyay_v1",
+  "chunk_size": 500,
+  "chunk_overlap": 60,
+  "total_chunks": 1748,
+  "upserted": 1748,
+  "skipped": 0,
+  "embedding_backend": "MiniLM",
+  "embedding_dim": 384,
+  "embedded_at": "2026-06-25T13:34:08.287875"
+}

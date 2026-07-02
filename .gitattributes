@@ -1,2 +1,6 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+demo_chroma_db/** binary
+demo_data/chunks/*.jsonl text eol=lf
+demo_data/chunks/*.json text eol=lf
