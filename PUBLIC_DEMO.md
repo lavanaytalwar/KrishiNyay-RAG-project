@@ -60,6 +60,16 @@ uvicorn app:app --host 0.0.0.0 --port ${PORT:-7860}
 
 If you are logged in locally with `huggingface-cli login`, the helper can create/update the Space and upload this repo:
 
+Dry-run first without network side effects:
+
+```bash
+krishinyay-env/bin/python deploy_hf_space.py \
+  --repo-id lavanay1/krishinyay-ai \
+  --dry-run
+```
+
+Deploy with Gemini configured:
+
 ```bash
 GEMINI_API_KEY=... krishinyay-env/bin/python deploy_hf_space.py \
   --repo-id lavanay1/krishinyay-ai \

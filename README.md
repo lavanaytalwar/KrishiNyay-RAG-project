@@ -322,6 +322,10 @@ LLM_PROVIDER=gemini GEMINI_API_KEY=... python validate_public_demo.py --require-
 Deploy/update the Hugging Face Space after logging in with `huggingface-cli login`:
 
 ```bash
+python deploy_hf_space.py --repo-id lavanay1/krishinyay-ai --dry-run
+```
+
+```bash
 GEMINI_API_KEY=... python deploy_hf_space.py --repo-id lavanay1/krishinyay-ai --require-gemini-key
 ```
 
