@@ -58,6 +58,29 @@ The included Dockerfile starts:
 uvicorn app:app --host 0.0.0.0 --port ${PORT:-7860}
 ```
 
+If you are logged in locally with `huggingface-cli login`, the helper can create/update the Space and upload this repo:
+
+```bash
+GEMINI_API_KEY=... krishinyay-env/bin/python deploy_hf_space.py \
+  --repo-id lavanay1/krishinyay-ai \
+  --require-gemini-key
+```
+
+The helper sets these public Space variables automatically:
+
+```env
+DEMO_PUBLIC=true
+ENABLE_LIVE_INGEST=false
+CHROMA_PATH=demo_chroma_db
+CHUNKS_DIR=demo_data/chunks
+LLM_PROVIDER=gemini
+GEMINI_MODEL=gemini-1.5-flash
+HF_HUB_OFFLINE=1
+TRANSFORMERS_OFFLINE=1
+```
+
+It only sets secrets that are present in the local environment and never prints secret values.
+
 The public demo relies on these packaged artifacts:
 
 ```text

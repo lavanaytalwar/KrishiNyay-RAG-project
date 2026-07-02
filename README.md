@@ -120,6 +120,7 @@ weather / spraying questions       → live Open-Meteo forecast plus IMD/local a
 ├── download_pdfs.py        # PDF download and text extraction
 ├── validate_corpus.py      # Retrieval smoke validation
 ├── validate_public_demo.py # Public demo packaging/readiness validation
+├── deploy_hf_space.py      # Create/update Hugging Face Space deployment
 ├── evaluate_rag.py         # RAGAS-style evaluation
 ├── sample_data/            # Small tracked demo corpus
 ├── demo_chroma_db/          # Packaged full public demo Chroma index
@@ -316,6 +317,12 @@ Before launch with a real Gemini key:
 
 ```bash
 LLM_PROVIDER=gemini GEMINI_API_KEY=... python validate_public_demo.py --require-gemini
+```
+
+Deploy/update the Hugging Face Space after logging in with `huggingface-cli login`:
+
+```bash
+GEMINI_API_KEY=... python deploy_hf_space.py --repo-id lavanay1/krishinyay-ai --require-gemini-key
 ```
 
 See `PUBLIC_DEMO.md` for the Hugging Face setup and demo script.
